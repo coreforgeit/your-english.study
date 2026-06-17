@@ -23,5 +23,6 @@ redis_data/
 dist/
 build/
 node_modules/
+*.tsbuildinfo
 
 data/
