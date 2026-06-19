@@ -1,78 +1,109 @@
+import logging
+
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql as psql
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.schemas.telegram_app import TelegramWordsMode, TelegramWordsRequest
-from db.models import UserWord, Word
-from db.models.enums import WordCountry, WordStatus
+from api.schemas.telegram_app import AnswerLanguage, TelegramWordsRequest
+from db.models import LearnedWord, Word
+from db.models.enums import WordStatus
+
+
+logger = logging.getLogger(__name__)
 
 
 class TelegramAppService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def get_words(self, payload: TelegramWordsRequest) -> list[Word]:
-        if payload.mode == TelegramWordsMode.LEARN:
-            return await self._get_new_word(payload)
+    async def get_learned_word_for_user(
+        self,
+        user_id: int,
+        payload: TelegramWordsRequest,
+    ) -> Word | None:
+        learned_words_stmt = sa.select(LearnedWord.word_id).where(
+            LearnedWord.user_id == user_id,
+        )
+        return await self._select_word(
+            payload=payload,
+            extra_filters=[Word.id.in_(learned_words_stmt)],
+        )
 
-        return await self._get_repeat_words(payload)
-
-    async def _get_new_word(self, payload: TelegramWordsRequest) -> list[Word]:
-        stmt = sa.select(Word).where(Word.status == WordStatus.ALLOWED)
-        stmt = self._apply_word_filters(stmt, payload)
-
-        if payload.user_id is not None:
-            learned_words_stmt = sa.select(UserWord.word_id).where(
-                UserWord.user_id == payload.user_id,
-            )
-            stmt = stmt.where(Word.id.not_in(learned_words_stmt))
-
-        stmt = stmt.order_by(sa.func.random()).limit(1)
-
-        result = await self.session.execute(stmt)
-        word = result.scalar_one_or_none()
+    async def get_new_word_for_user(
+        self,
+        user_id: int,
+        payload: TelegramWordsRequest,
+    ) -> Word | None:
+        learned_words_stmt = sa.select(LearnedWord.word_id).where(
+            LearnedWord.user_id == user_id,
+        )
+        word = await self._select_word(
+            payload=payload,
+            extra_filters=[Word.id.not_in(learned_words_stmt)],
+        )
         if word is None:
-            return []
-
-        if payload.user_id is not None:
-            user_word_stmt = (
-                psql.insert(UserWord)
-                .values(user_id=payload.user_id, word_id=word.id)
-                .on_conflict_do_nothing(
-                    index_elements=[UserWord.user_id, UserWord.word_id],
-                )
-            )
-            await self.session.execute(user_word_stmt)
-
-        return [word]
-
-    async def _get_repeat_words(self, payload: TelegramWordsRequest) -> list[Word]:
-        if payload.user_id is None:
-            return []
+            return None
 
         stmt = (
-            sa.select(Word)
-            .join(UserWord, UserWord.word_id == Word.id)
-            .where(UserWord.user_id == payload.user_id)
-            .where(Word.status == WordStatus.ALLOWED)
+            psql.insert(LearnedWord)
+            .values(user_id=user_id, word_id=word.id)
+            .on_conflict_do_nothing(
+                index_elements=[LearnedWord.user_id, LearnedWord.word_id],
+            )
         )
-        stmt = self._apply_word_filters(stmt, payload)
-        stmt = stmt.order_by(Word.id)
+        await self.session.execute(stmt)
+        logger.info('Learned word saved: user_id=%s word_id=%s', user_id, word.id)
+        return word
 
-        result = await self.session.execute(stmt)
-        return list(result.scalars().all())
-
-    def _apply_word_filters(
+    async def check_text_answer(
         self,
-        stmt: sa.Select[tuple[Word]],
+        word_id: int,
+        answer_language: AnswerLanguage,
+        answer: str,
+    ) -> bool | None:
+        word = await self.session.get(Word, word_id)
+        if word is None:
+            logger.info('Answer check failed: word not found word_id=%s', word_id)
+            return None
+
+        if answer_language == AnswerLanguage.EN:
+            correct_answer = word.word
+        else:
+            correct_answer = word.translation
+
+        is_correct = (
+            self._normalize_answer(answer) == self._normalize_answer(correct_answer)
+        )
+        logger.info(
+            'Answer checked: word_id=%s answer_language=%s is_correct=%s',
+            word_id,
+            answer_language,
+            is_correct,
+        )
+        return is_correct
+
+    async def _select_word(
+        self,
         payload: TelegramWordsRequest,
-    ) -> sa.Select[tuple[Word]]:
+        extra_filters: list[sa.ColumnElement[bool]] | None = None,
+    ) -> Word | None:
+        stmt = sa.select(Word).where(Word.status == WordStatus.ALLOWED)
         if payload.level is not None:
             stmt = stmt.where(Word.level == payload.level)
 
-        if payload.country is not None:
-            stmt = stmt.where(
-                Word.country.in_([payload.country.value, WordCountry.BOTH.value]),
-            )
+        if extra_filters:
+            stmt = stmt.where(*extra_filters)
 
-        return stmt
+        stmt = stmt.order_by(sa.func.random()).limit(1)
+
+        logger.info('Selecting word: level=%s', payload.level)
+        result = await self.session.execute(stmt)
+        word = result.scalar_one_or_none()
+        logger.info('Selected word: word_id=%s', getattr(word, 'id', None))
+        return word
+
+    @staticmethod
+    def _normalize_answer(value: str) -> str:
+        return value.strip().casefold()
+
+# alembic revision --autogenerate -m "learning_words"

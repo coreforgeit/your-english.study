@@ -1,21 +1,10 @@
-from datetime import datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
 
-from db.models.enums import WordCountry, WordStatus
-
-
-class TelegramWordsMode(StrEnum):
-    LEARN = 'learn'
-    REPEAT = 'repeat'
-
 
 class TelegramWordsRequest(BaseModel):
-    mode: TelegramWordsMode
-    user_id: int | None = None
     level: str | None = None
-    country: WordCountry | None = None
 
 
 class WordRead(BaseModel):
@@ -24,18 +13,37 @@ class WordRead(BaseModel):
     pronunciation: str | None
     translation: str
     part_of_speech: str | None
-    country: WordCountry
     level: str | None
     audio_url: str | None
-    audio_file_name: str | None
-    audio_tg_id: str | None
-    source: str | None
-    status: WordStatus
-    created_at: datetime
-    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class TelegramWordsResponse(BaseModel):
-    words: list[WordRead]
+    data: WordRead
+
+
+class AnswerType(StrEnum):
+    TEXT = 'text'
+    AUDIO = 'audio'
+
+
+class AnswerLanguage(StrEnum):
+    EN = 'en'
+    RU = 'ru'
+
+
+class TelegramWordAnswerRequest(BaseModel):
+    word_id: int
+    answer_type: AnswerType
+    answer_language: AnswerLanguage
+    answer: str | None = None
+
+
+class TelegramWordAnswerData(BaseModel):
+    success: bool
+    is_correct: bool | None = None
+
+
+class TelegramWordAnswerResponse(BaseModel):
+    data: TelegramWordAnswerData

@@ -27,7 +27,7 @@ class Word(Base):
             values_callable=lambda enum_cls: [item.value for item in enum_cls],
         ),
         default=WordCountry.BOTH,
-        server_default=WordCountry.BOTH.value,
+        server_default=WordCountry.BOTH,
     )
     level: Mapped[str | None] = mapped_column(sa.String(50))
     audio_url: Mapped[str | None] = mapped_column(sa.String(500))
@@ -49,7 +49,7 @@ class Word(Base):
         server_default=WordStatus.ALLOWED.value,
     )
 
-    users: Mapped[list['UserWord']] = relationship(
+    learned_by_users: Mapped[list['LearnedWord']] = relationship(
         back_populates='word',
         cascade='all, delete-orphan',
     )

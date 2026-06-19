@@ -1,13 +1,13 @@
 import { z } from 'zod';
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? '';
+export const BACKEND_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
 
 export async function apiRequest<T>(
   path: string,
   schema: z.ZodType<T>,
   init?: RequestInit,
 ): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const response = await fetch(`${BACKEND_URL}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',

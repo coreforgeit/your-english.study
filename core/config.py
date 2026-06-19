@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     bot_token: str = ''
     api_host: str = '0.0.0.0'
     api_port: int = 8000
+    log_level: str = 'INFO'
 
     model_config = SettingsConfigDict(
         env_file='.env',

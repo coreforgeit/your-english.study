@@ -4,10 +4,14 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from db.models.base import Base
 
 
-class UserWord(Base):
-    __tablename__ = 'user_words'
+class LearnedWord(Base):
+    __tablename__ = 'learned_words'
     __table_args__ = (
-        sa.UniqueConstraint('user_id', 'word_id', name='uq_user_words_user_id_word_id'),
+        sa.UniqueConstraint(
+            'user_id',
+            'word_id',
+            name='uq_learned_words_user_id_word_id',
+        ),
     )
 
     user_id: Mapped[int] = mapped_column(
@@ -19,5 +23,5 @@ class UserWord(Base):
         index=True,
     )
 
-    user: Mapped['User'] = relationship(back_populates='words')
-    word: Mapped['Word'] = relationship(back_populates='users')
+    user: Mapped['User'] = relationship(back_populates='learned_words')
+    word: Mapped['Word'] = relationship(back_populates='learned_by_users')

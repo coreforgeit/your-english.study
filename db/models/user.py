@@ -18,7 +18,7 @@ class User(Base):
     full_name: Mapped[str] = mapped_column(sa.String(255))
     username: Mapped[str | None] = mapped_column(sa.String(255))
 
-    words: Mapped[list['UserWord']] = relationship(
+    learned_words: Mapped[list['LearnedWord']] = relationship(
         back_populates='user',
         cascade='all, delete-orphan',
     )
