@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     db_name: str
     db_user: str
     db_password: str
-    db_host: str = 'postgres'
+    db_host: str = 'db'
     db_port: int = 5432
     redis_host: str = 'redis'
     redis_port: int = 6379
@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     api_host: str = '0.0.0.0'
     api_port: int = 8000
     log_level: str = 'INFO'
+    open_ai_api_key: str = ''
+    open_ai_transcription_model: str = 'whisper-1'
 
     model_config = SettingsConfigDict(
         env_file='.env',

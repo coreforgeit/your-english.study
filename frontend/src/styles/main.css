@@ -156,14 +156,13 @@ input {
 .error-toast {
   position: fixed;
   z-index: 20;
-  top: calc(12px + env(safe-area-inset-top));
+  top: 46%;
   left: 50%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 36px;
-  align-items: center;
-  gap: 10px;
+  justify-items: center;
+  gap: 14px;
   width: min(calc(100% - 24px), 520px);
-  padding: 12px 12px 12px 14px;
+  padding: 18px;
   border: 2px solid rgb(168 54 54 / 0.32);
   border-radius: 12px;
   background: #fff7f7;
@@ -177,19 +176,20 @@ input {
 
 .error-toast span {
   min-width: 0;
+  text-align: center;
   overflow-wrap: anywhere;
 }
 
 .error-toast-close {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
+  min-width: 128px;
+  min-height: 42px;
+  padding: 0 16px;
   border: 2px solid transparent;
   border-radius: 10px;
   background: rgb(168 54 54 / 0.1);
   color: #a83636;
   cursor: pointer;
+  font-weight: 800;
 }
 
 .error-toast-close:hover,
@@ -473,6 +473,69 @@ input {
   place-items: center;
   width: min(100%, 420px);
   gap: 10px;
+}
+
+.answer-comparison {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.answer-line {
+  display: inline-flex;
+  justify-content: center;
+  max-width: 100%;
+  margin: 0;
+  overflow: visible;
+  line-height: 1.08;
+  white-space: pre;
+}
+
+.answer-line-submitted {
+  color: var(--tg-theme-hint-color, #66717d);
+  font-size: clamp(15px, 6vw, 24px);
+  font-weight: 700;
+}
+
+.answer-line-correct {
+  color: #257a4b;
+  font-size: clamp(24px, 10vw, 44px);
+  font-weight: 800;
+}
+
+.answer-line-incorrect {
+  color: #a83636;
+}
+
+.answer-line-neutral {
+  color: var(--tg-theme-text-color, #17212b);
+}
+
+.answer-char {
+  display: inline-grid;
+  place-items: center;
+  min-width: 0.42em;
+  border-radius: 6px;
+  white-space: pre;
+}
+
+.answer-char-replace,
+.answer-char-extra {
+  background: rgb(255 92 92 / 0.22);
+  color: #a83636;
+}
+
+.answer-char-missing {
+  min-width: 0.72em;
+  border: 1px dashed rgb(168 54 54 / 0.48);
+  background: rgb(255 92 92 / 0.12);
+  color: #a83636;
+}
+
+.answer-char-expected {
+  background: rgb(45 190 112 / 0.22);
+  color: #257a4b;
 }
 
 .submitted-answer {

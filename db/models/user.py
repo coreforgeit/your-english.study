@@ -22,6 +22,10 @@ class User(Base):
         back_populates='user',
         cascade='all, delete-orphan',
     )
+    answer_errors: Mapped[list['AnswerError']] = relationship(
+        back_populates='user',
+        cascade='all, delete-orphan',
+    )
 
     @classmethod
     async def add_or_update(

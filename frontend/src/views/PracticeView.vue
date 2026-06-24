@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Mic, Send, X } from '@lucide/vue';
+import { Mic, Send } from '@lucide/vue';
 import { computed, ref } from 'vue';
 
 import WordInfoBlock from '@/features/practice/components/WordInfoBlock.vue';
@@ -10,6 +10,22 @@ type PracticeMode = 'learn' | 'repeat';
 type PracticeDirection = 'ru-en' | 'en-ru' | 'random';
 type DisplayDirection = Exclude<PracticeDirection, 'random'>;
 type AnswerStatus = 'correct' | 'incorrect' | null;
+type TypoType = 'replace' | 'missing' | 'extra';
+
+type AnswerTypo = {
+  index: number;
+  type: TypoType;
+  expected: string | null;
+  actual: string | null;
+};
+
+type AnswerCharState = 'normal' | 'replace' | 'extra' | 'missing' | 'expected';
+
+type AnswerCharPart = {
+  key: string;
+  value: string;
+  state: AnswerCharState;
+};
 
 type WordData = {
   id: number | null;
@@ -35,6 +51,7 @@ type PracticeState = {
   answerSubmitted: boolean;
   answerText: string;
   answerStatus: AnswerStatus;
+  answerTypo: AnswerTypo | null;
   submittedAnswer: string;
   recordedAudio: Blob | null;
 };
@@ -47,6 +64,7 @@ function createPracticeState(displayDirection: DisplayDirection): PracticeState 
     answerSubmitted: false,
     answerText: '',
     answerStatus: null,
+    answerTypo: null,
     submittedAnswer: '',
     recordedAudio: null,
   };
@@ -64,8 +82,19 @@ const errorMessage = ref<string | null>(null);
 const mediaRecorder = ref<MediaRecorder | null>(null);
 const audioChunks = ref<BlobPart[]>([]);
 const recordingStream = ref<MediaStream | null>(null);
+const recordingAudioContext = ref<AudioContext | null>(null);
+const recordingAnalyser = ref<AnalyserNode | null>(null);
+const voiceDetectionFrame = ref<number | null>(null);
 const repeatState = ref<PracticeState>(createPracticeState('en-ru'));
 const learnState = ref<PracticeState>(createPracticeState('en-ru'));
+
+const voiceSilenceThreshold = 0.025;
+const voiceSilenceMsToStop = 1200;
+const voiceMinRecordingMs = 500;
+
+let voiceDetected = false;
+let silenceStartedAt: number | null = null;
+let recordingStartedAt = 0;
 
 const levelRows: Array<Array<{ value: Level; label: string; className: string; ariaLabel: string }>> = [
   [
@@ -134,6 +163,10 @@ const nextButtonText = computed(() => {
 
   return 'Пропустить';
 });
+const submittedAnswerParts = computed(() =>
+  buildAnswerParts(currentState.value.submittedAnswer, currentState.value.answerTypo, 'submitted'),
+);
+const correctAnswerParts = computed(() => buildAnswerParts(answerBlock.value.text, currentState.value.answerTypo, 'correct'));
 
 function getRequestBody() {
   return {
@@ -143,6 +176,103 @@ function getRequestBody() {
 
 function resolveDisplayDirection(value: PracticeDirection): DisplayDirection {
   return value === 'random' ? (Math.random() > 0.5 ? 'ru-en' : 'en-ru') : value;
+}
+
+function getAnswerLanguage(displayDirection: DisplayDirection) {
+  return displayDirection === 'en-ru' ? 'ru' : 'en';
+}
+
+function getResponseData(data: unknown) {
+  if (data && typeof data === 'object' && 'data' in data && data.data && typeof data.data === 'object') {
+    return data.data;
+  }
+
+  return data;
+}
+
+function isTypoType(value: unknown): value is TypoType {
+  return value === 'replace' || value === 'missing' || value === 'extra';
+}
+
+function getAnswerTypo(data: unknown): AnswerTypo | null {
+  const responseData = getResponseData(data);
+
+  if (!responseData || typeof responseData !== 'object') {
+    return null;
+  }
+
+  if (!('has_typo' in responseData) || responseData.has_typo !== true) {
+    return null;
+  }
+
+  if (!('typo' in responseData) || !responseData.typo || typeof responseData.typo !== 'object') {
+    return null;
+  }
+
+  const typo = responseData.typo;
+
+  if (
+    !('index' in typo) ||
+    typeof typo.index !== 'number' ||
+    !('type' in typo) ||
+    !isTypoType(typo.type)
+  ) {
+    return null;
+  }
+
+  return {
+    index: typo.index,
+    type: typo.type,
+    expected: 'expected' in typo && typeof typo.expected === 'string' ? typo.expected : null,
+    actual: 'actual' in typo && typeof typo.actual === 'string' ? typo.actual : null,
+  };
+}
+
+function buildAnswerParts(text: string, typo: AnswerTypo | null, line: 'submitted' | 'correct'): AnswerCharPart[] {
+  const chars = Array.from(text);
+  const parts = chars.map((value, index) => ({
+    key: `${line}-${index}-${value}`,
+    value,
+    state: 'normal' as AnswerCharState,
+  }));
+
+  if (!typo) {
+    return parts;
+  }
+
+  const index = Math.max(0, Math.min(typo.index, chars.length));
+
+  if (typo.type === 'missing') {
+    if (line === 'submitted') {
+      parts.splice(index, 0, {
+        key: `${line}-missing-${index}`,
+        value: typo.expected ?? '',
+        state: 'missing',
+      });
+    } else if (parts[index]) {
+      parts[index].state = 'expected';
+    }
+
+    return parts;
+  }
+
+  if (typo.type === 'extra') {
+    if (line === 'submitted' && parts[index]) {
+      parts[index].state = 'extra';
+    }
+
+    return parts;
+  }
+
+  if (line === 'submitted' && parts[index]) {
+    parts[index].state = 'replace';
+  }
+
+  if (line === 'correct' && parts[index]) {
+    parts[index].state = 'expected';
+  }
+
+  return parts;
 }
 
 function normalizeWordData(data: unknown): WordData | null {
@@ -273,6 +403,7 @@ async function requestWord() {
     targetState.displayDirection = nextDisplayDirection;
     targetState.showAnswer = false;
     targetState.answerStatus = null;
+    targetState.answerTypo = null;
     targetState.submittedAnswer = '';
     targetState.answerText = '';
     targetState.recordedAudio = null;
@@ -287,39 +418,39 @@ async function requestWord() {
 }
 
 function getAnswerResult(data: unknown): AnswerStatus {
-  if (!data || typeof data !== 'object') {
+  const responseData = getResponseData(data);
+
+  if (!responseData || typeof responseData !== 'object') {
     return null;
   }
 
-  if ('is_correct' in data && typeof data.is_correct === 'boolean') {
-    return data.is_correct ? 'correct' : 'incorrect';
+  if ('is_correct' in responseData && typeof responseData.is_correct === 'boolean') {
+    return responseData.is_correct ? 'correct' : 'incorrect';
   }
 
-  if ('correct' in data && typeof data.correct === 'boolean') {
-    return data.correct ? 'correct' : 'incorrect';
-  }
-
-  if ('data' in data && data.data && typeof data.data === 'object') {
-    const responseData = data.data;
-
-    if ('is_correct' in responseData && typeof responseData.is_correct === 'boolean') {
-      return responseData.is_correct ? 'correct' : 'incorrect';
-    }
-
-    if ('correct' in responseData && typeof responseData.correct === 'boolean') {
-      return responseData.correct ? 'correct' : 'incorrect';
-    }
+  if ('correct' in responseData && typeof responseData.correct === 'boolean') {
+    return responseData.correct ? 'correct' : 'incorrect';
   }
 
   return null;
 }
 
-async function submitAnswer() {
+function getSubmittedAnswerFromResponse(data: unknown, fallback: string) {
+  const responseData = getResponseData(data);
+
+  if (responseData && typeof responseData === 'object' && 'answer' in responseData && typeof responseData.answer === 'string') {
+    return responseData.answer;
+  }
+
+  return fallback;
+}
+
+async function submitAnswer(targetState = currentState.value) {
   const url = `${BACKEND_URL}/api/telegram-app/words/answer`;
-  const targetState = currentState.value;
   const wordId = targetState.word?.id;
   const textAnswer = targetState.answerText.trim();
   const hasAudio = targetState.recordedAudio !== null;
+  const targetAnswerLanguage = getAnswerLanguage(targetState.displayDirection);
 
   answerError.value = null;
   clearError();
@@ -352,14 +483,14 @@ async function submitAnswer() {
 
       formData.append('word_id', String(wordId));
       formData.append('answer_type', 'audio');
-      formData.append('answer_language', answerRequestLanguage.value);
+      formData.append('answer_language', targetAnswerLanguage);
       formData.append('audio_file', targetState.recordedAudio, 'answer.webm');
 
       requestInit.body = formData;
       requestDebug.body = {
         word_id: wordId,
         answer_type: 'audio',
-        answer_language: answerRequestLanguage.value,
+        answer_language: targetAnswerLanguage,
         audio_file: {
           name: 'answer.webm',
           size: targetState.recordedAudio.size,
@@ -370,7 +501,7 @@ async function submitAnswer() {
       const body = {
         word_id: wordId,
         answer_type: 'text',
-        answer_language: answerRequestLanguage.value,
+        answer_language: targetAnswerLanguage,
         answer: textAnswer,
       };
 
@@ -396,7 +527,8 @@ async function submitAnswer() {
     }
 
     targetState.answerStatus = getAnswerResult(data);
-    targetState.submittedAnswer = targetState.recordedAudio ? 'Голосовой ответ' : textAnswer;
+    targetState.answerTypo = getAnswerTypo(data);
+    targetState.submittedAnswer = getSubmittedAnswerFromResponse(data, textAnswer);
     targetState.answerText = '';
     targetState.recordedAudio = null;
     targetState.showAnswer = true;
@@ -410,8 +542,91 @@ async function submitAnswer() {
   }
 }
 
-function stopRecording() {
-  mediaRecorder.value?.stop();
+async function submitCurrentAnswer() {
+  await submitAnswer();
+}
+
+function stopVoiceDetection() {
+  if (voiceDetectionFrame.value !== null) {
+    cancelAnimationFrame(voiceDetectionFrame.value);
+    voiceDetectionFrame.value = null;
+  }
+
+  recordingAudioContext.value?.close().catch((error: unknown) => {
+    console.error('[practice-answer:voice-context-error]', error);
+  });
+  recordingAudioContext.value = null;
+  recordingAnalyser.value = null;
+  voiceDetected = false;
+  silenceStartedAt = null;
+  recordingStartedAt = 0;
+}
+
+function getVoiceVolume(analyser: AnalyserNode) {
+  const data = new Uint8Array(analyser.fftSize);
+  analyser.getByteTimeDomainData(data);
+
+  let sum = 0;
+  for (const value of data) {
+    const normalizedValue = (value - 128) / 128;
+    sum += normalizedValue * normalizedValue;
+  }
+
+  return Math.sqrt(sum / data.length);
+}
+
+function startVoiceDetection(targetState: PracticeState) {
+  const analyser = recordingAnalyser.value;
+
+  if (!analyser) {
+    return;
+  }
+
+  const checkVoice = () => {
+    const volume = getVoiceVolume(analyser);
+    const now = performance.now();
+
+    if (volume >= voiceSilenceThreshold) {
+      voiceDetected = true;
+      silenceStartedAt = null;
+    } else if (voiceDetected) {
+      silenceStartedAt ??= now;
+
+      if (now - silenceStartedAt >= voiceSilenceMsToStop && now - recordingStartedAt >= voiceMinRecordingMs) {
+        stopRecording({ shouldSubmit: true, targetState });
+        return;
+      }
+    }
+
+    voiceDetectionFrame.value = requestAnimationFrame(checkVoice);
+  };
+
+  voiceDetectionFrame.value = requestAnimationFrame(checkVoice);
+}
+
+function stopRecording(options?: { shouldSubmit?: boolean; targetState?: PracticeState }) {
+  const recorder = mediaRecorder.value;
+  const shouldSubmit = options?.shouldSubmit === true;
+  const targetState = options?.targetState ?? currentState.value;
+
+  stopVoiceDetection();
+
+  if (recorder && recorder.state !== 'inactive') {
+    recorder.onstop = () => {
+      targetState.recordedAudio = new Blob(audioChunks.value, { type: recorder.mimeType || 'audio/webm' });
+      console.log('[practice-answer:voice]', {
+        size: targetState.recordedAudio.size,
+        type: targetState.recordedAudio.type,
+        auto_submit: shouldSubmit,
+      });
+
+      if (shouldSubmit && targetState.recordedAudio.size > 0) {
+        void submitAnswer(targetState);
+      }
+    };
+    recorder.stop();
+  }
+
   recordingStream.value?.getTracks().forEach((track) => track.stop());
   mediaRecorder.value = null;
   recordingStream.value = null;
@@ -430,23 +645,28 @@ async function startRecording() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const options = MediaRecorder.isTypeSupported('audio/webm') ? { mimeType: 'audio/webm' } : undefined;
     const recorder = new MediaRecorder(stream, options);
+    const audioContext = new AudioContext();
+    const source = audioContext.createMediaStreamSource(stream);
+    const analyser = audioContext.createAnalyser();
+
+    analyser.fftSize = 1024;
+    source.connect(analyser);
 
     recordingStream.value = stream;
     mediaRecorder.value = recorder;
+    recordingAudioContext.value = audioContext;
+    recordingAnalyser.value = analyser;
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
         audioChunks.value.push(event.data);
       }
     };
-    recorder.onstop = () => {
-      targetState.recordedAudio = new Blob(audioChunks.value, { type: recorder.mimeType || 'audio/webm' });
-      console.log('[practice-answer:voice]', {
-        size: targetState.recordedAudio.size,
-        type: targetState.recordedAudio.type,
-      });
-    };
     recorder.start();
     isRecording.value = true;
+    voiceDetected = false;
+    silenceStartedAt = null;
+    recordingStartedAt = performance.now();
+    startVoiceDetection(targetState);
     console.log('[practice-answer:voice]', 'recording-started');
   } catch (error) {
     answerError.value = error instanceof Error ? error.message : 'Не удалось включить микрофон';
@@ -470,7 +690,7 @@ async function toggleRecording() {
     <div v-if="errorMessage" class="error-toast" role="alert">
       <span>{{ errorMessage }}</span>
       <button type="button" class="error-toast-close" aria-label="Закрыть ошибку" @click="clearError">
-        <X :size="18" />
+        Я понял
       </button>
     </div>
 
@@ -522,10 +742,28 @@ async function toggleRecording() {
           <p class="word-language">{{ answerLanguage }}</p>
           <template v-if="currentState.showAnswer">
             <div class="answer-result">
-              <span class="submitted-answer">
-                {{ currentState.submittedAnswer }}
-              </span>
-              <WordInfoBlock :item="answerBlock" :tone="answerTone" :result="currentState.answerStatus" />
+              <div class="answer-comparison">
+                <p class="answer-line answer-line-submitted">
+                  <span
+                    v-for="part in submittedAnswerParts"
+                    :key="part.key"
+                    class="answer-char"
+                    :class="`answer-char-${part.state}`"
+                  >
+                    {{ part.value }}
+                  </span>
+                </p>
+                <p class="answer-line answer-line-correct" :class="`answer-line-${currentState.answerStatus ?? 'neutral'}`">
+                  <span
+                    v-for="part in correctAnswerParts"
+                    :key="part.key"
+                    class="answer-char"
+                    :class="`answer-char-${part.state}`"
+                  >
+                    {{ part.value }}
+                  </span>
+                </p>
+              </div>
             </div>
           </template>
         </template>
@@ -533,7 +771,7 @@ async function toggleRecording() {
     </main>
 
     <footer class="practice-actions">
-      <form v-if="!isLearnMode" class="answer-input-panel" @submit.prevent="submitAnswer">
+      <form v-if="!isLearnMode" class="answer-input-panel" @submit.prevent="submitCurrentAnswer">
         <input
           v-model="currentState.answerText"
           class="answer-input"

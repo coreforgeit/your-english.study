@@ -40,9 +40,19 @@ class TelegramWordAnswerRequest(BaseModel):
     answer: str | None = None
 
 
+class AnswerTypo(BaseModel):
+    index: int
+    type: str
+    expected: str | None = None
+    actual: str | None = None
+
+
 class TelegramWordAnswerData(BaseModel):
     success: bool
+    answer: str
     is_correct: bool | None = None
+    has_typo: bool = False
+    typo: AnswerTypo | None = None
 
 
 class TelegramWordAnswerResponse(BaseModel):

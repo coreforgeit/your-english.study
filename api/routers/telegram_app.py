@@ -1,9 +1,12 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.datastructures import UploadFile as StarletteUploadFile
 
+from ai.errors import AudioTranscriptionError
+from ai.transcriptions import AudioTranscriptionService
 from api.dependencies import CurrentTelegramUser, get_current_telegram_user, get_session
 from api.schemas.telegram_app import (
     AnswerType,
@@ -86,7 +89,7 @@ async def answer_word(
     current_user: CurrentTelegramUser = Depends(get_current_telegram_user),
     session: AsyncSession = Depends(get_session),
 ) -> TelegramWordAnswerResponse:
-    payload = await _parse_answer_request(request)
+    payload, audio_file = await _parse_answer_request(request)
     logger.info(
         'Answer request: user_id=%s word_id=%s answer_type=%s answer_language=%s',
         current_user.id,
@@ -95,10 +98,64 @@ async def answer_word(
         payload.answer_language,
     )
 
+    service = TelegramAppService(session)
+
     if payload.answer_type == AnswerType.AUDIO:
-        logger.info('Audio answer accepted: word_id=%s', payload.word_id)
+        if audio_file is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail='Audio file is required',
+            )
+
+        audio_bytes = await audio_file.read()
+        try:
+            transcription = await AudioTranscriptionService().transcribe_audio(
+                audio=audio_bytes,
+                filename=audio_file.filename or 'answer.webm',
+                content_type=audio_file.content_type or 'audio/webm',
+                language=payload.answer_language,
+                trim_silence=False,
+            )
+        except AudioTranscriptionError as exc:
+            logger.exception(f'Ошибка расшифровки аудио: word_id={payload.word_id}')
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail='Audio transcription failed',
+            ) from exc
+
+        logger.info(
+            f'Аудио расшифровано: word_id={payload.word_id}, '
+            f'text={transcription.text!r}'
+        )
+        check_result = await service.check_text_answer(
+            word_id=payload.word_id,
+            answer_language=payload.answer_language,
+            answer=transcription.text,
+        )
+        if check_result is None:
+            logger.info(f'Ответ отклонен: слово не найдено word_id={payload.word_id}')
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail='Word not found',
+            )
+
+        await service.save_answer_error(
+            user_id=current_user.id,
+            word_id=payload.word_id,
+            answer_type=payload.answer_type,
+            answer_language=payload.answer_language,
+            user_answer=transcription.text,
+            check_result=check_result,
+        )
+
         return TelegramWordAnswerResponse(
-            data=TelegramWordAnswerData(success=True),
+            data=TelegramWordAnswerData(
+                success=True,
+                answer=transcription.text,
+                is_correct=check_result.is_correct,
+                has_typo=check_result.has_typo,
+                typo=check_result.typo,
+            ),
         )
 
     if payload.answer is None:
@@ -108,29 +165,51 @@ async def answer_word(
             detail='Text answer is required',
         )
 
-    service = TelegramAppService(session)
-    is_correct = await service.check_text_answer(
+    text_answer = payload.answer.strip()
+    check_result = await service.check_text_answer(
         word_id=payload.word_id,
         answer_language=payload.answer_language,
-        answer=payload.answer,
+        answer=text_answer,
     )
-    if is_correct is None:
+    if check_result is None:
         logger.info('Answer rejected: word not found word_id=%s', payload.word_id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail='Word not found',
         )
 
+    await service.save_answer_error(
+        user_id=current_user.id,
+        word_id=payload.word_id,
+        answer_type=payload.answer_type,
+        answer_language=payload.answer_language,
+        user_answer=text_answer,
+        check_result=check_result,
+    )
+
     return TelegramWordAnswerResponse(
-        data=TelegramWordAnswerData(success=True, is_correct=is_correct),
+        data=TelegramWordAnswerData(
+            success=True,
+            answer=text_answer,
+            is_correct=check_result.is_correct,
+            has_typo=check_result.has_typo,
+            typo=check_result.typo,
+        ),
     )
 
 
-async def _parse_answer_request(request: Request) -> TelegramWordAnswerRequest:
+async def _parse_answer_request(
+    request: Request,
+) -> tuple[TelegramWordAnswerRequest, UploadFile | None]:
     content_type = request.headers.get('content-type', '')
+    audio_file = None
 
     if content_type.startswith('multipart/form-data'):
         form = await request.form()
+        raw_audio_file = form.get('audio_file')
+        if isinstance(raw_audio_file, StarletteUploadFile):
+            audio_file = raw_audio_file
+
         raw_payload = {
             'word_id': form.get('word_id'),
             'answer_type': form.get('answer_type'),
@@ -141,7 +220,7 @@ async def _parse_answer_request(request: Request) -> TelegramWordAnswerRequest:
         raw_payload = await request.json()
 
     try:
-        return TelegramWordAnswerRequest.model_validate(raw_payload)
+        return TelegramWordAnswerRequest.model_validate(raw_payload), audio_file
     except ValidationError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

@@ -1,7 +1,7 @@
 name: english_practice_bot
 
 services:
-  postgres:
+  db:
     image: postgres:latest
     container_name: postgres_ep
     restart: unless-stopped
@@ -33,11 +33,11 @@ services:
     env_file:
       - ../.env
     ports:
-      - "5050:80"
+      - "8080:80"
     volumes:
       - pgadmin_data:/var/lib/pgadmin
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
 
   api:
@@ -53,7 +53,7 @@ services:
     volumes:
       - ..:/app
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
       redis:
         condition: service_started
@@ -87,7 +87,7 @@ services:
     volumes:
       - ..:/app
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
       redis:
         condition: service_started

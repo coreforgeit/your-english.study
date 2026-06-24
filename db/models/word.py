@@ -53,3 +53,7 @@ class Word(Base):
         back_populates='word',
         cascade='all, delete-orphan',
     )
+    answer_errors: Mapped[list['AnswerError']] = relationship(
+        back_populates='word',
+        cascade='all, delete-orphan',
+    )
