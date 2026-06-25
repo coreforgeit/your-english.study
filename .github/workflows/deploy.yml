@@ -135,7 +135,7 @@ jobs:
           docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml pull
           docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml up -d db redis
           docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml --profile migration run --rm migrate
-          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml up -d api bot frontend caddy
+          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml up -d --force-recreate api bot frontend caddy
 
           docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml ps -a
           for service in api bot frontend caddy; do
