@@ -126,9 +126,22 @@ jobs:
 
           old_app_images=""
           if [ -f .deploy.env ]; then
+            echo "Collecting old app image ids"
             old_app_images="$(docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml images -q api bot frontend 2>/dev/null | sort -u || true)"
+
+            echo "Stopping old app containers"
+            docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml stop api bot frontend caddy || true
+
+            echo "Removing old app containers"
+            docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml rm -f api bot frontend caddy || true
+
+            if [ -n "$old_app_images" ]; then
+              echo "Removing old app images"
+              echo "$old_app_images" | xargs -r docker image rm -f
+            fi
           fi
 
+          echo "Writing new image tags"
           cat > .deploy.env << ENVEOF
           API_IMAGE=${{ needs.build-and-push.outputs.api_image }}
           BOT_IMAGE=${{ needs.build-and-push.outputs.bot_image }}
@@ -137,19 +150,22 @@ jobs:
 
           echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
 
+          echo "Validating compose config"
+          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml config --quiet
+
+          echo "Starting infrastructure services"
           docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml up -d db redis
 
-          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml stop api bot frontend caddy || true
-          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml rm -f api bot frontend caddy || true
+          echo "Pulling new runtime images"
+          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml pull api bot frontend caddy
 
-          if [ -n "$old_app_images" ]; then
-            echo "$old_app_images" | xargs -r docker image rm -f
-          fi
-
-          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml pull api bot frontend
+          echo "Running migrations"
           docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml --profile migration run --rm migrate
+
+          echo "Starting new app containers"
           docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml up -d api bot frontend caddy
 
+          echo "Checking service status"
           docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml ps -a
           for service in api bot frontend caddy; do
             status="$(docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml ps --status running --services "$service")"
