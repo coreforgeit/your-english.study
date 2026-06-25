@@ -128,17 +128,6 @@ jobs:
           if [ -f .deploy.env ]; then
             echo "Collecting old app image ids"
             old_app_images="$(docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml images -q api bot frontend 2>/dev/null | sort -u || true)"
-
-            echo "Stopping old app containers"
-            docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml stop api bot frontend caddy || true
-
-            echo "Removing old app containers"
-            docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml rm -f api bot frontend caddy || true
-
-            if [ -n "$old_app_images" ]; then
-              echo "Removing old app images"
-              echo "$old_app_images" | xargs -r docker image rm -f
-            fi
           fi
 
           echo "Writing new image tags"
@@ -158,6 +147,13 @@ jobs:
 
           echo "Pulling new runtime images"
           docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml pull api bot frontend caddy
+          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml images api bot frontend caddy
+
+          echo "Stopping old app containers"
+          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml stop api bot frontend caddy || true
+
+          echo "Removing old app containers"
+          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml rm -f api bot frontend caddy || true
 
           echo "Running migrations"
           docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml --profile migration run --rm migrate
@@ -175,6 +171,16 @@ jobs:
               exit 1
             fi
           done
+
+          if [ -n "$old_app_images" ]; then
+            echo "Removing old app images not used by current containers"
+            current_app_images="$(docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml images -q api bot frontend 2>/dev/null | sort -u || true)"
+            for image_id in $old_app_images; do
+              if ! printf '%s\n' "$current_app_images" | grep -qx "$image_id"; then
+                docker image rm -f "$image_id" || true
+              fi
+            done
+          fi
 
           docker image prune -f
           EOF
