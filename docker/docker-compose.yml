@@ -43,7 +43,7 @@ services:
   api:
     build:
       context: ..
-      dockerfile: docker/api.Dockerfile
+      dockerfile: docker/dockerfiles/api.Dockerfile
     container_name: api_ep
     restart: unless-stopped
     env_file:
@@ -61,7 +61,7 @@ services:
   frontend:
     build:
       context: ..
-      dockerfile: docker/frontend.Dockerfile
+      dockerfile: docker/dockerfiles/frontend.Dockerfile
     container_name: frontend_ep
     restart: unless-stopped
     environment:
@@ -79,7 +79,7 @@ services:
   bot:
     build:
       context: ..
-      dockerfile: docker/bot.Dockerfile
+      dockerfile: docker/dockerfiles/bot.Dockerfile
     container_name: bot_ep
     restart: unless-stopped
     env_file:

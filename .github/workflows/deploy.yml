@@ -51,7 +51,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: docker/api.prod.Dockerfile
+          file: docker/dockerfiles/api.prod.Dockerfile
           push: true
           tags: |
             ${{ steps.images.outputs.api_image }}
@@ -61,7 +61,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: docker/bot.prod.Dockerfile
+          file: docker/dockerfiles/bot.prod.Dockerfile
           push: true
           tags: |
             ${{ steps.images.outputs.bot_image }}
@@ -71,7 +71,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: docker/frontend.prod.Dockerfile
+          file: docker/dockerfiles/frontend.prod.Dockerfile
           push: true
           build-args: |
             VITE_DEBUG=false
@@ -136,5 +136,16 @@ jobs:
           docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml up -d db redis
           docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml --profile migration run --rm migrate
           docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml up -d api bot frontend caddy
+
+          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml ps -a
+          for service in api bot frontend caddy; do
+            status="$(docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml ps --status running --services "$service")"
+            if [ "$status" != "$service" ]; then
+              echo "Service $service is not running"
+              docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml logs --tail=100 "$service"
+              exit 1
+            fi
+          done
+
           docker image prune -f
           EOF
