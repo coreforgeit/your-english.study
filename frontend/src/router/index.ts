@@ -5,6 +5,11 @@ export const router = createRouter({
   routes: [
     {
       path: '/',
+      name: 'home',
+      component: () => import('@/views/HomeView.vue'),
+    },
+    {
+      path: '/practice',
       name: 'practice',
       component: () => import('@/views/PracticeView.vue'),
     },

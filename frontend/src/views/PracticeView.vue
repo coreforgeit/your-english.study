@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Mic, Send } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import { useRoute } from 'vue-router';
 
 import WordInfoBlock from '@/features/practice/components/WordInfoBlock.vue';
 import { BACKEND_URL } from '@/shared/api/client';
@@ -72,7 +73,8 @@ function createPracticeState(displayDirection: DisplayDirection): PracticeState 
 
 const selectedLevel = ref<Level>('ANY');
 const direction = ref<PracticeDirection>('en-ru');
-const selectedMode = ref<PracticeMode>('repeat');
+const route = useRoute();
+const selectedMode = ref<PracticeMode>(route.query.mode === 'learn' ? 'learn' : 'repeat');
 const isLoading = ref(false);
 const isSendingAnswer = ref(false);
 const isRecording = ref(false);

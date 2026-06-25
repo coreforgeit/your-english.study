@@ -2,6 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    debug: bool = False
     db_name: str
     db_user: str
     db_password: str
@@ -13,6 +14,10 @@ class Settings(BaseSettings):
     bot_token: str = ''
     api_host: str = '0.0.0.0'
     api_port: int = 8000
+    site_url: str = 'https://your-english.study'
+    www_url: str = 'https://www.your-english.study'
+    app_url: str = 'https://app.your-english.study'
+    api_url: str = 'https://api.your-english.study'
     log_level: str = 'INFO'
     open_ai_api_key: str = ''
     open_ai_transcription_model: str = 'whisper-1'
@@ -33,6 +38,16 @@ class Settings(BaseSettings):
     @property
     def redis_url(self) -> str:
         return f'redis://{self.redis_host}:{self.redis_port}/{self.redis_db}'
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [
+            'http://localhost:5173',
+            'http://127.0.0.1:5173',
+            self.site_url,
+            self.www_url,
+            self.app_url,
+        ]
 
 
 settings = Settings()

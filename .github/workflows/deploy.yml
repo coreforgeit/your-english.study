@@ -1,0 +1,140 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      api_image: ${{ steps.images.outputs.api_image }}
+      bot_image: ${{ steps.images.outputs.bot_image }}
+      frontend_image: ${{ steps.images.outputs.frontend_image }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Prepare image names
+        id: images
+        shell: bash
+        run: |
+          image_prefix="${REGISTRY}/${GITHUB_REPOSITORY,,}"
+          echo "api_image=${image_prefix}-api:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "bot_image=${image_prefix}-bot:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "frontend_image=${image_prefix}-frontend:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "api_latest=${image_prefix}-api:latest" >> "$GITHUB_OUTPUT"
+          echo "bot_latest=${image_prefix}-bot:latest" >> "$GITHUB_OUTPUT"
+          echo "frontend_latest=${image_prefix}-frontend:latest" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/api.prod.Dockerfile
+          push: true
+          tags: |
+            ${{ steps.images.outputs.api_image }}
+            ${{ steps.images.outputs.api_latest }}
+
+      - name: Build and push bot image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/bot.prod.Dockerfile
+          push: true
+          tags: |
+            ${{ steps.images.outputs.bot_image }}
+            ${{ steps.images.outputs.bot_latest }}
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/frontend.prod.Dockerfile
+          push: true
+          build-args: |
+            VITE_DEBUG=false
+            VITE_API_URL=${{ vars.VITE_API_URL }}
+            VITE_FRONTEND_URL=${{ vars.VITE_FRONTEND_URL }}
+          tags: |
+            ${{ steps.images.outputs.frontend_image }}
+            ${{ steps.images.outputs.frontend_latest }}
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: production
+
+    steps:
+      - name: Check out deployment files
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${{ secrets.DEPLOY_PORT || '22' }}" "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Upload compose files
+        shell: bash
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT || '22' }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "mkdir -p '${{ secrets.DEPLOY_PATH }}/docker'"
+          scp -i ~/.ssh/deploy_key -P "${{ secrets.DEPLOY_PORT || '22' }}" docker/docker-compose.prod.yml docker/Caddyfile "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ secrets.DEPLOY_PATH }}/docker/"
+
+      - name: Upload app environment
+        shell: bash
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT || '22' }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" << 'EOF'
+          set -euo pipefail
+          cd "${{ secrets.DEPLOY_PATH }}"
+          cat > .env << 'ENVEOF'
+          ${{ secrets.APP_ENV }}
+          ENVEOF
+          chmod 600 .env
+          EOF
+
+      - name: Pull images and restart services
+        shell: bash
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT || '22' }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" << 'EOF'
+          set -euo pipefail
+          cd "${{ secrets.DEPLOY_PATH }}"
+
+          cat > .deploy.env << ENVEOF
+          API_IMAGE=${{ needs.build-and-push.outputs.api_image }}
+          BOT_IMAGE=${{ needs.build-and-push.outputs.bot_image }}
+          FRONTEND_IMAGE=${{ needs.build-and-push.outputs.frontend_image }}
+          ENVEOF
+
+          echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
+
+          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml pull
+          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml up -d db redis
+          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml --profile migration run --rm migrate
+          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml up -d api bot frontend caddy
+          docker image prune -f
+          EOF

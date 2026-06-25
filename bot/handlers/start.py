@@ -1,8 +1,9 @@
 from aiogram import Router
 from aiogram.filters import CommandStart
-from aiogram.types import Message
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, WebAppInfo
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import settings
 from db.models import User
 
 
@@ -22,4 +23,18 @@ async def start_handler(message: Message, session: AsyncSession) -> None:
         username=telegram_user.username,
     )
 
-    await message.answer('Привет! Я буду помогать тебе повторять английские слова.')
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text='Открыть приложение',
+                    web_app=WebAppInfo(url=settings.app_url),
+                ),
+            ],
+        ],
+    )
+
+    await message.answer(
+        'Привет! Я буду помогать тебе повторять английские слова.',
+        reply_markup=keyboard,
+    )
