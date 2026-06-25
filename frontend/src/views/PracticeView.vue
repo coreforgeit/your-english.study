@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Mic, Send } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { computed, onUnmounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 
 import WordInfoBlock from '@/features/practice/components/WordInfoBlock.vue';
@@ -548,6 +548,30 @@ async function submitCurrentAnswer() {
   await submitAnswer();
 }
 
+function setRecordingStreamEnabled(enabled: boolean) {
+  recordingStream.value?.getAudioTracks().forEach((track) => {
+    track.enabled = enabled;
+  });
+}
+
+async function getRecordingStream() {
+  if (recordingStream.value && recordingStream.value.active) {
+    setRecordingStreamEnabled(true);
+    return recordingStream.value;
+  }
+
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  recordingStream.value = stream;
+  setRecordingStreamEnabled(true);
+
+  return stream;
+}
+
+function releaseRecordingStream() {
+  recordingStream.value?.getTracks().forEach((track) => track.stop());
+  recordingStream.value = null;
+}
+
 function stopVoiceDetection() {
   if (voiceDetectionFrame.value !== null) {
     cancelAnimationFrame(voiceDetectionFrame.value);
@@ -629,9 +653,8 @@ function stopRecording(options?: { shouldSubmit?: boolean; targetState?: Practic
     recorder.stop();
   }
 
-  recordingStream.value?.getTracks().forEach((track) => track.stop());
   mediaRecorder.value = null;
-  recordingStream.value = null;
+  setRecordingStreamEnabled(false);
   isRecording.value = false;
 }
 
@@ -644,7 +667,7 @@ async function startRecording() {
   audioChunks.value = [];
 
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await getRecordingStream();
     const options = MediaRecorder.isTypeSupported('audio/webm') ? { mimeType: 'audio/webm' } : undefined;
     const recorder = new MediaRecorder(stream, options);
     const audioContext = new AudioContext();
@@ -654,7 +677,6 @@ async function startRecording() {
     analyser.fftSize = 1024;
     source.connect(analyser);
 
-    recordingStream.value = stream;
     mediaRecorder.value = recorder;
     recordingAudioContext.value = audioContext;
     recordingAnalyser.value = analyser;
@@ -685,6 +707,11 @@ async function toggleRecording() {
 
   await startRecording();
 }
+
+onUnmounted(() => {
+  stopRecording();
+  releaseRecordingStream();
+});
 </script>
 
 <template>
