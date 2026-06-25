@@ -117,12 +117,17 @@ jobs:
           chmod 600 .env
           EOF
 
-      - name: Pull images and restart services
+      - name: Replace app containers and restart services
         shell: bash
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT || '22' }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" << 'EOF'
           set -euo pipefail
           cd "${{ secrets.DEPLOY_PATH }}"
+
+          old_app_images=""
+          if [ -f .deploy.env ]; then
+            old_app_images="$(docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml images -q api bot frontend 2>/dev/null | sort -u || true)"
+          fi
 
           cat > .deploy.env << ENVEOF
           API_IMAGE=${{ needs.build-and-push.outputs.api_image }}
@@ -132,10 +137,18 @@ jobs:
 
           echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
 
-          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml pull
           docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml up -d db redis
+
+          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml stop api bot frontend caddy || true
+          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml rm -f api bot frontend caddy || true
+
+          if [ -n "$old_app_images" ]; then
+            echo "$old_app_images" | xargs -r docker image rm -f
+          fi
+
+          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml pull api bot frontend
           docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml --profile migration run --rm migrate
-          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml up -d --force-recreate api bot frontend caddy
+          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml up -d api bot frontend caddy
 
           docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml ps -a
           for service in api bot frontend caddy; do
