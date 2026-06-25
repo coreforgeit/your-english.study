@@ -124,11 +124,9 @@ jobs:
           set -euo pipefail
           cd "${{ secrets.DEPLOY_PATH }}"
 
-          old_app_images=""
-          if [ -f .deploy.env ]; then
-            echo "Collecting old app image ids"
-            old_app_images="$(docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml images -q api bot frontend 2>/dev/null | sort -u || true)"
-          fi
+          compose() {
+            docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml "$@"
+          }
 
           echo "Writing new image tags"
           cat > .deploy.env << ENVEOF
@@ -140,47 +138,43 @@ jobs:
           echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
 
           echo "Validating compose config"
-          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml config --quiet
+          compose config --quiet
 
           echo "Starting infrastructure services"
-          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml up -d db redis
+          compose up -d db redis
 
           echo "Pulling new runtime images"
-          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml pull api bot frontend caddy
-          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml images api bot frontend caddy
+          compose pull api bot frontend caddy
+
+          set -a
+          . ./.deploy.env
+          set +a
+
+          echo "Verifying pulled app images"
+          docker image inspect "$API_IMAGE" "$BOT_IMAGE" "$FRONTEND_IMAGE" >/dev/null
 
           echo "Stopping old app containers"
-          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml stop api bot frontend caddy || true
+          compose stop api bot frontend caddy || true
 
           echo "Removing old app containers"
-          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml rm -f api bot frontend caddy || true
+          compose rm -f api bot frontend caddy || true
 
           echo "Running migrations"
-          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml --profile migration run --rm migrate
+          compose --profile migration run --rm migrate
 
           echo "Starting new app containers"
-          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml up -d api bot frontend caddy
+          compose up -d --force-recreate --remove-orphans api bot frontend caddy
 
           echo "Checking service status"
-          docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml ps -a
+          compose ps -a
           for service in api bot frontend caddy; do
-            status="$(docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml ps --status running --services "$service")"
+            status="$(compose ps --status running --services "$service")"
             if [ "$status" != "$service" ]; then
               echo "Service $service is not running"
-              docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml logs --tail=100 "$service"
+              compose logs --tail=100 "$service"
               exit 1
             fi
           done
-
-          if [ -n "$old_app_images" ]; then
-            echo "Removing old app images not used by current containers"
-            current_app_images="$(docker compose --env-file .env --env-file .deploy.env -f docker/docker-compose.prod.yml images -q api bot frontend 2>/dev/null | sort -u || true)"
-            for image_id in $old_app_images; do
-              if ! printf '%s\n' "$current_app_images" | grep -qx "$image_id"; then
-                docker image rm -f "$image_id" || true
-              fi
-            done
-          fi
 
           docker image prune -f
           EOF
