@@ -160,7 +160,8 @@ jobs:
           compose rm -f api bot frontend caddy || true
 
           echo "Running migrations"
-          compose --profile migration run --rm migrate
+          compose --profile migration run -T --rm migrate
+          echo "Migrations completed"
 
           echo "Starting new app containers"
           compose up -d --force-recreate --remove-orphans api bot frontend caddy
