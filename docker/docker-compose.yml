@@ -83,25 +83,14 @@ services:
   worker:
     build:
       context: ..
-      dockerfile: docker/dockerfiles/api.Dockerfile
+      dockerfile: docker/dockerfiles/worker.Dockerfile
     container_name: worker_ep
     restart: unless-stopped
-    command:
-      - taskiq
-      - worker
-      - worker.broker:broker
-      - worker.tasks
-      - --workers
-      - "1"
-      - --max-async-tasks
-      - "10"
-      - --log-level
-      - INFO
     env_file:
       - ../.env
-    volumes:
-      - ..:/app
     depends_on:
+      db:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
 

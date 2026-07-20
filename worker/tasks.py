@@ -17,3 +17,4 @@ async def test(
         user_id,
         word_id,
     )
+

@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       api_image: ${{ steps.images.outputs.api_image }}
+      worker_image: ${{ steps.images.outputs.worker_image }}
       bot_image: ${{ steps.images.outputs.bot_image }}
       frontend_image: ${{ steps.images.outputs.frontend_image }}
 
@@ -31,9 +32,11 @@ jobs:
         run: |
           image_prefix="${REGISTRY}/${GITHUB_REPOSITORY,,}"
           echo "api_image=${image_prefix}-api:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "worker_image=${image_prefix}-worker:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
           echo "bot_image=${image_prefix}-bot:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
           echo "frontend_image=${image_prefix}-frontend:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
           echo "api_latest=${image_prefix}-api:latest" >> "$GITHUB_OUTPUT"
+          echo "worker_latest=${image_prefix}-worker:latest" >> "$GITHUB_OUTPUT"
           echo "bot_latest=${image_prefix}-bot:latest" >> "$GITHUB_OUTPUT"
           echo "frontend_latest=${image_prefix}-frontend:latest" >> "$GITHUB_OUTPUT"
 
@@ -56,6 +59,16 @@ jobs:
           tags: |
             ${{ steps.images.outputs.api_image }}
             ${{ steps.images.outputs.api_latest }}
+
+      - name: Build and push worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/dockerfiles/worker.Dockerfile
+          push: true
+          tags: |
+            ${{ steps.images.outputs.worker_image }}
+            ${{ steps.images.outputs.worker_latest }}
 
       - name: Build and push bot image
         uses: docker/build-push-action@v6
@@ -131,6 +144,7 @@ jobs:
           echo "Writing new image tags"
           cat > .deploy.env << ENVEOF
           API_IMAGE=${{ needs.build-and-push.outputs.api_image }}
+          WORKER_IMAGE=${{ needs.build-and-push.outputs.worker_image }}
           BOT_IMAGE=${{ needs.build-and-push.outputs.bot_image }}
           FRONTEND_IMAGE=${{ needs.build-and-push.outputs.frontend_image }}
           ENVEOF
@@ -151,7 +165,7 @@ jobs:
           set +a
 
           echo "Verifying pulled app images"
-          docker image inspect "$API_IMAGE" "$BOT_IMAGE" "$FRONTEND_IMAGE" >/dev/null
+          docker image inspect "$API_IMAGE" "$WORKER_IMAGE" "$BOT_IMAGE" "$FRONTEND_IMAGE" >/dev/null
 
           echo "Stopping old app containers"
           compose stop api worker bot frontend caddy || true

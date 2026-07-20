@@ -55,22 +55,13 @@ services:
       start_period: 20s
 
   worker:
-    image: ${API_IMAGE:?Set API_IMAGE}
+    image: ${WORKER_IMAGE:?Set WORKER_IMAGE}
     restart: unless-stopped
-    command:
-      - taskiq
-      - worker
-      - worker.broker:broker
-      - worker.tasks
-      - --workers
-      - "1"
-      - --max-async-tasks
-      - "10"
-      - --log-level
-      - INFO
     env_file:
       - ../.env
     depends_on:
+      db:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
 

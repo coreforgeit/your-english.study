@@ -1,0 +1,6 @@
+asyncpg>=0.29
+openai>=2.0
+pydantic-settings>=2.3
+SQLAlchemy>=2.0
+taskiq>=0.11
+taskiq-aio-pika>=0.4
