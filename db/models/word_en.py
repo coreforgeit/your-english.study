@@ -2,7 +2,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import Base
-from db.models.enums import WordCountry, WordStatus
+from db.models.enums import WordCountry, WordSource, WordStatus
 
 
 class WordEn(Base):
@@ -32,10 +32,22 @@ class WordEn(Base):
     audio_url: Mapped[str | None] = mapped_column(sa.String(500))
     audio_file_name: Mapped[str | None] = mapped_column(sa.String(255))
     audio_tg_id: Mapped[str | None] = mapped_column(sa.String(255))
-    source: Mapped[str] = mapped_column(
-        sa.String(255),
-        default='default',
-        server_default='default',
+    source: Mapped[WordSource] = mapped_column(
+        sa.Enum(
+            WordSource,
+            name='word_source',
+            native_enum=False,
+            create_constraint=True,
+            length=255,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        default=WordSource.BASE,
+        server_default=WordSource.BASE,
+    )
+    is_reviewed: Mapped[bool] = mapped_column(
+        sa.Boolean,
+        default=False,
+        server_default=sa.false(),
     )
     status: Mapped[WordStatus] = mapped_column(
         sa.Enum(

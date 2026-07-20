@@ -23,7 +23,7 @@ from api.services.audio_answer_samples import AudioAnswerSampleService
 from api.services.vocabulary import VocabularyService
 from db.models import WordEn
 from db.models.enums import WordStatus
-from worker.tasks import test
+from worker.vocabulary.tasks import review_word
 
 
 logger = logging.getLogger(__name__)
@@ -107,10 +107,7 @@ async def request_word_review(
     word.status = WordStatus.CHECKING
     await session.flush()
 
-    queued_task = await test.kiq(
-        user_id=current_user.id,
-        word_id=word_id,
-    )
+    queued_task = await review_word.kiq(word_id=word_id)
 
     return WordReviewResponse(
         success=True,

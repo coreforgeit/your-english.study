@@ -17,4 +17,4 @@ COPY ai ./ai
 COPY core ./core
 COPY db ./db
 
-CMD ["taskiq", "worker", "worker.broker:broker", "worker.tasks", "--workers", "1", "--max-async-tasks", "10", "--log-level", "INFO"]
+CMD ["taskiq", "worker", "worker.broker:broker", "worker.vocabulary.tasks", "--workers", "1", "--max-async-tasks", "10", "--log-level", "INFO"]

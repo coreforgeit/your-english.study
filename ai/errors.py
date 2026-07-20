@@ -4,3 +4,7 @@ class AIModuleError(Exception):
 
 class AudioTranscriptionError(AIModuleError):
     """Raised when audio transcription fails."""
+
+
+class VocabularyReviewError(AIModuleError):
+    """Raised when a vocabulary review cannot produce a structured result."""

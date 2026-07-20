@@ -1,5 +1,5 @@
 from db.models.answer_error import AnswerError
-from db.models.enums import WordCountry, WordStatus
+from db.models.enums import WordCountry, WordSource, WordStatus
 from db.models.learned_word import LearnedWord
 from db.models.user import User
 from db.models.word_en import WordEn
@@ -14,5 +14,6 @@ __all__ = (
     'WordEnSynonym',
     'WordRu',
     'WordCountry',
+    'WordSource',
     'WordStatus',
 )

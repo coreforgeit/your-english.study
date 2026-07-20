@@ -11,3 +11,10 @@ class WordStatus(StrEnum):
     ALLOWED = 'allowed'
     CHECKING = 'checking'
     FORBIDDEN = 'forbidden'
+
+
+class WordSource(StrEnum):
+    BASE = 'base'
+    GPT = 'gpt'
+    ADMIN = 'admin'
+    USER = 'user'
