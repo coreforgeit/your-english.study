@@ -12,7 +12,7 @@ class AnswerError(Base):
         index=True,
     )
     word_id: Mapped[int] = mapped_column(
-        sa.ForeignKey('words.id', ondelete='CASCADE'),
+        sa.ForeignKey('words_en.id', ondelete='CASCADE'),
         index=True,
     )
     answer_type: Mapped[str] = mapped_column(sa.String(20))
@@ -27,4 +27,4 @@ class AnswerError(Base):
     actual: Mapped[str | None] = mapped_column(sa.String(10))
 
     user: Mapped['User'] = relationship(back_populates='answer_errors')
-    word: Mapped['Word'] = relationship(back_populates='answer_errors')
+    word: Mapped['WordEn'] = relationship(back_populates='answer_errors')

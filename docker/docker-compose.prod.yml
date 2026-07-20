@@ -37,17 +37,6 @@ services:
       retries: 3
       start_period: 20s
 
-  migrate:
-    image: ${API_IMAGE:?Set API_IMAGE}
-    profiles:
-      - migration
-    env_file:
-      - ../.env
-    command: ["alembic", "upgrade", "head"]
-    depends_on:
-      db:
-        condition: service_healthy
-
   bot:
     image: ${BOT_IMAGE:?Set BOT_IMAGE}
     restart: unless-stopped

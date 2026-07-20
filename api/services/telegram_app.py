@@ -5,9 +5,10 @@ from dataclasses import dataclass
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql as psql
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from api.schemas.telegram_app import AnswerLanguage, TelegramWordsRequest
-from db.models import AnswerError, LearnedWord, Word
+from db.models import AnswerError, LearnedWord, WordEn, WordEnSynonym
 from db.models.enums import WordStatus
 
 
@@ -30,26 +31,26 @@ class TelegramAppService:
         self,
         user_id: int,
         payload: TelegramWordsRequest,
-    ) -> Word | None:
+    ) -> WordEn | None:
         learned_words_stmt = sa.select(LearnedWord.word_id).where(
             LearnedWord.user_id == user_id,
         )
         return await self._select_word(
             payload=payload,
-            extra_filters=[Word.id.in_(learned_words_stmt)],
+            extra_filters=[WordEn.id.in_(learned_words_stmt)],
         )
 
     async def get_new_word_for_user(
         self,
         user_id: int,
         payload: TelegramWordsRequest,
-    ) -> Word | None:
+    ) -> WordEn | None:
         learned_words_stmt = sa.select(LearnedWord.word_id).where(
             LearnedWord.user_id == user_id,
         )
         word = await self._select_word(
             payload=payload,
-            extra_filters=[Word.id.not_in(learned_words_stmt)],
+            extra_filters=[WordEn.id.not_in(learned_words_stmt)],
         )
         if word is None:
             return None
@@ -71,17 +72,30 @@ class TelegramAppService:
         answer_language: AnswerLanguage,
         answer: str,
     ) -> AnswerCheckResult | None:
-        word = await self.session.get(Word, word_id)
+        word = await self.session.get(
+            WordEn,
+            word_id,
+            options=(
+                selectinload(WordEn.translations),
+                selectinload(WordEn.synonym_links).selectinload(
+                    WordEnSynonym.synonym_word_en,
+                ),
+                selectinload(WordEn.synonym_of_links).selectinload(
+                    WordEnSynonym.word_en,
+                ),
+            ),
+        )
         if word is None:
             logger.info(f'Проверка ответа: слово не найдено word_id={word_id}')
             return None
 
         if answer_language == AnswerLanguage.EN:
-            correct_answer = word.word
+            check_result = self._check_english_answer(answer=answer, word=word)
+            correct_answer = check_result.correct_answer
         else:
-            correct_answer = word.translation
+            check_result = self._check_translation_answer(answer=answer, word=word)
+            correct_answer = check_result.correct_answer
 
-        check_result = self._check_answer(answer=answer, correct_answer=correct_answer)
         check_result = AnswerCheckResult(
             is_correct=check_result.is_correct,
             has_typo=check_result.has_typo,
@@ -126,10 +140,10 @@ class TelegramAppService:
         #         actual=typo.get('actual'),
         #     ),
         # )
-        logger.info(
-            f'Ошибка ответа сохранена: user_id={user_id}, word_id={word_id}, '
-            f'is_correct={check_result.is_correct}, has_typo={check_result.has_typo}'
-        )
+        # logger.info(
+        #     f'Ошибка ответа сохранена: user_id={user_id}, word_id={word_id}, '
+        #     f'is_correct={check_result.is_correct}, has_typo={check_result.has_typo}'
+        # )
 
     def _check_answer(self, *, answer: str, correct_answer: str) -> AnswerCheckResult:
         normalized_answer = self._normalize_answer(answer)
@@ -248,11 +262,15 @@ class TelegramAppService:
         self,
         payload: TelegramWordsRequest,
         extra_filters: list[sa.ColumnElement[bool]] | None = None,
-    ) -> Word | None:
-        stmt = sa.select(Word).where(Word.status == WordStatus.ALLOWED)
+    ) -> WordEn | None:
+        stmt = (
+            sa.select(WordEn)
+            .options(selectinload(WordEn.translations))
+            .where(WordEn.status == WordStatus.ALLOWED)
+        )
         logger.info(f'payload: {payload}')
         if payload.level is not None:
-            stmt = stmt.where(Word.level == payload.level)
+            stmt = stmt.where(WordEn.level == payload.level)
 
         if extra_filters:
             stmt = stmt.where(*extra_filters)
@@ -269,3 +287,52 @@ class TelegramAppService:
     @staticmethod
     def _normalize_answer(value: str) -> str:
         return ' '.join(value.strip().casefold().replace('\u0451', '\u0435').split())
+
+    def _check_english_answer(self, *, answer: str, word: WordEn) -> AnswerCheckResult:
+        for correct_answer in self._get_english_answer_candidates(word):
+            check_result = self._check_answer(answer=answer, correct_answer=correct_answer)
+            if check_result.is_correct:
+                return AnswerCheckResult(
+                    is_correct=check_result.is_correct,
+                    has_typo=check_result.has_typo,
+                    typo=check_result.typo,
+                    correct_answer=correct_answer,
+                )
+
+        return AnswerCheckResult(
+            is_correct=False,
+            correct_answer=word.word,
+        )
+
+    @staticmethod
+    def _get_english_answer_candidates(word: WordEn) -> list[str]:
+        candidates = [
+            word.word,
+            *(
+                link.synonym_word_en.word
+                for link in word.synonym_links
+                if link.synonym_word_en is not None
+            ),
+            *(
+                link.word_en.word
+                for link in word.synonym_of_links
+                if link.word_en is not None
+            ),
+        ]
+        return list(dict.fromkeys(candidates))
+
+    def _check_translation_answer(self, *, answer: str, word: WordEn) -> AnswerCheckResult:
+        for translation in word.translations:
+            check_result = self._check_answer(answer=answer, correct_answer=translation.word)
+            if check_result.is_correct:
+                return AnswerCheckResult(
+                    is_correct=check_result.is_correct,
+                    has_typo=check_result.has_typo,
+                    typo=check_result.typo,
+                    correct_answer=translation.word,
+                )
+
+        return AnswerCheckResult(
+            is_correct=False,
+            correct_answer=word.translation,
+        )

@@ -33,6 +33,7 @@ type WordData = {
   word: string;
   pronunciation: string | null;
   translation: string;
+  translations: string[];
   partOfSpeech: string | null;
   audioUrl: string | null;
   level: string | null;
@@ -54,6 +55,7 @@ type PracticeState = {
   answerStatus: AnswerStatus;
   answerTypo: AnswerTypo | null;
   submittedAnswer: string;
+  correctAnswer: string;
   recordedAudio: Blob | null;
 };
 
@@ -67,6 +69,7 @@ function createPracticeState(displayDirection: DisplayDirection): PracticeState 
     answerStatus: null,
     answerTypo: null,
     submittedAnswer: '',
+    correctAnswer: '',
     recordedAudio: null,
   };
 }
@@ -128,7 +131,7 @@ const englishBlock = computed<WordInfo>(() => ({
 }));
 
 const russianBlock = computed<WordInfo>(() => ({
-  text: currentWord.value?.translation ?? '',
+  text: currentWord.value?.translations.join(', ') ?? '',
 }));
 
 const promptBlock = computed(() =>
@@ -168,7 +171,8 @@ const nextButtonText = computed(() => {
 const submittedAnswerParts = computed(() =>
   buildAnswerParts(currentState.value.submittedAnswer, currentState.value.answerTypo, 'submitted'),
 );
-const correctAnswerParts = computed(() => buildAnswerParts(answerBlock.value.text, currentState.value.answerTypo, 'correct'));
+const displayedCorrectAnswer = computed(() => currentState.value.correctAnswer || answerBlock.value.text);
+const correctAnswerParts = computed(() => buildAnswerParts(displayedCorrectAnswer.value, currentState.value.answerTypo, 'correct'));
 
 function getRequestBody() {
   return {
@@ -295,11 +299,29 @@ function normalizeWordData(data: unknown): WordData | null {
       'pronunciation' in wordData && typeof wordData.pronunciation === 'string' ? wordData.pronunciation : null,
     translation:
       'translation' in wordData && typeof wordData.translation === 'string' ? wordData.translation : 'Перевод не пришел',
+    translations: getWordTranslations(wordData),
     partOfSpeech:
       'part_of_speech' in wordData && typeof wordData.part_of_speech === 'string' ? wordData.part_of_speech : null,
     audioUrl: 'audio_url' in wordData && typeof wordData.audio_url === 'string' ? wordData.audio_url : null,
     level: 'level' in wordData && typeof wordData.level === 'string' ? wordData.level : null,
   };
+}
+
+function getWordTranslations(wordData: object): string[] {
+  if ('translations' in wordData && Array.isArray(wordData.translations)) {
+    const translations = wordData.translations.filter(
+      (translation): translation is string => typeof translation === 'string' && translation.trim().length > 0,
+    );
+    if (translations.length > 0) {
+      return translations;
+    }
+  }
+
+  if ('translation' in wordData && typeof wordData.translation === 'string') {
+    return [wordData.translation];
+  }
+
+  return ['РџРµСЂРµРІРѕРґ РЅРµ РїСЂРёС€РµР»'];
 }
 
 function getBackendErrorMessage(data: unknown, fallback: string) {
@@ -397,6 +419,7 @@ async function requestWord() {
       id: null,
       word: 'Ответ без слова',
       pronunciation: null,
+      translations: ['РћС‚РІРµС‚ Р±РµР· РїРµСЂРµРІРѕРґР°'],
       translation: 'Ответ без перевода',
       partOfSpeech: null,
       audioUrl: null,
@@ -407,6 +430,7 @@ async function requestWord() {
     targetState.answerStatus = null;
     targetState.answerTypo = null;
     targetState.submittedAnswer = '';
+    targetState.correctAnswer = '';
     targetState.answerText = '';
     targetState.recordedAudio = null;
     targetState.answerSubmitted = nextMode === 'learn';
@@ -442,6 +466,21 @@ function getSubmittedAnswerFromResponse(data: unknown, fallback: string) {
 
   if (responseData && typeof responseData === 'object' && 'answer' in responseData && typeof responseData.answer === 'string') {
     return responseData.answer;
+  }
+
+  return fallback;
+}
+
+function getCorrectAnswerFromResponse(data: unknown, fallback: string) {
+  const responseData = getResponseData(data);
+
+  if (
+    responseData &&
+    typeof responseData === 'object' &&
+    'correct_answer' in responseData &&
+    typeof responseData.correct_answer === 'string'
+  ) {
+    return responseData.correct_answer;
   }
 
   return fallback;
@@ -531,6 +570,7 @@ async function submitAnswer(targetState = currentState.value) {
     targetState.answerStatus = getAnswerResult(data);
     targetState.answerTypo = getAnswerTypo(data);
     targetState.submittedAnswer = getSubmittedAnswerFromResponse(data, textAnswer);
+    targetState.correctAnswer = getCorrectAnswerFromResponse(data, answerBlock.value.text);
     targetState.answerText = '';
     targetState.recordedAudio = null;
     targetState.showAnswer = true;
@@ -753,7 +793,7 @@ onUnmounted(() => {
         <WordInfoBlock :item="englishBlock" tone="english" />
         <div class="learn-translation">
           <span>RU</span>
-          <strong>{{ currentWord?.translation }}</strong>
+          <strong>{{ currentWord?.translations.join(', ') }}</strong>
         </div>
       </section>
     </main>

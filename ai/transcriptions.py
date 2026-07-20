@@ -1,4 +1,5 @@
 import logging
+from time import perf_counter
 from typing import BinaryIO
 
 from openai import AsyncOpenAI, OpenAIError
@@ -6,6 +7,7 @@ from openai import AsyncOpenAI, OpenAIError
 from ai.audio import AudioSilenceTrimmer
 from ai.client import get_openai_client
 from ai.errors import AudioTranscriptionError
+from ai.prompts import get_transcription_prompt
 from ai.schemas import AudioTranscriptionResult
 from core.config import settings
 
@@ -31,38 +33,84 @@ class AudioTranscriptionService:
         language: str | None = None,
         trim_silence: bool = True,
     ) -> AudioTranscriptionResult:
+
         if trim_silence:
+            trim_started_at = perf_counter()
             file_payload = await self.silence_trimmer.trim(
                 audio=audio,
                 filename=filename,
                 content_type=content_type,
             )
+            trim_duration_ms = (perf_counter() - trim_started_at) * 1000
         else:
             file_payload = self._build_file_payload(
                 audio=audio,
                 filename=filename,
                 content_type=content_type,
             )
+            trim_duration_ms = 0.0
 
         transcription_params = {
-            'model': settings.open_ai_transcription_model,
+            'model': settings.open_ai_transcription_model.value,
             'file': file_payload,
         }
         if language is not None:
             transcription_params['language'] = language
 
+        prompt = get_transcription_prompt(language)
+        if prompt is not None:
+            transcription_params['prompt'] = prompt
+
         try:
+            transcription_started_at = perf_counter()
             response = await self.client.audio.transcriptions.create(
                 **transcription_params,
             )
+            transcription_duration_ms = (perf_counter() - transcription_started_at) * 1000
+
+            # logger.info(f'transcription_params: {transcription_params.get("model")} {transcription_params.get("language")}')
+            # logger.info(f'text: {response.text} {response.usage}')
         except OpenAIError as exc:
             logger.exception('OpenAI audio transcription failed')
             raise AudioTranscriptionError('Audio transcription failed') from exc
 
         return AudioTranscriptionResult(
             text=response.text,
-            model=settings.open_ai_transcription_model,
+            model=settings.open_ai_transcription_model.value,
+            trim_duration_ms=trim_duration_ms,
+            transcription_duration_ms=transcription_duration_ms,
         )
+
+    async def _comparison_models(self, file_payload, language, filename):
+        models = ('gpt-4o-transcribe', 'gpt-4o-mini-transcribe')
+        response = None
+        logger.info(f'---')
+        for model in models:
+            transcription_params = {
+                'model': model,
+                'file': file_payload,
+            }
+            if language:
+                transcription_params['language'] = language
+
+            prompt = get_transcription_prompt(language)
+            if prompt is not None:
+                transcription_params['prompt'] = prompt
+
+            try:
+                transcription_started_at = perf_counter()
+                response = await self.client.audio.transcriptions.create(
+                    **transcription_params,
+                )
+                transcription_duration_ms = (perf_counter() - transcription_started_at) * 1000
+
+                logger.info(f'model: {model}')
+                logger.info(f'text: {response.text} | {transcription_duration_ms} | {response.usage.input_token_details}')
+            except OpenAIError as exc:
+                logger.exception('OpenAI audio transcription failed')
+                raise AudioTranscriptionError('Audio transcription failed') from exc
+        logger.info(f'---')
+        return response
 
     @staticmethod
     def _build_file_payload(

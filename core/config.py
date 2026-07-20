@@ -1,5 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from ai.models import TranscriptionModel
+
 
 class Settings(BaseSettings):
     debug: bool = False
@@ -20,7 +22,8 @@ class Settings(BaseSettings):
     api_url: str = 'https://api.your-english.study'
     log_level: str = 'INFO'
     open_ai_api_key: str = ''
-    open_ai_transcription_model: str = 'whisper-1'
+    open_ai_transcription_model: TranscriptionModel = TranscriptionModel.GPT_4O_MINI_TRANSCRIBE
+    # open_ai_transcription_model: TranscriptionModel = TranscriptionModel.GPT_4O_TRANSCRIBE
 
     model_config = SettingsConfigDict(
         env_file='.env',

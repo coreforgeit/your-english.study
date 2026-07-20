@@ -1,6 +1,6 @@
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TelegramWordsRequest(BaseModel):
@@ -11,7 +11,7 @@ class WordRead(BaseModel):
     id: int
     word: str
     pronunciation: str | None
-    translation: str
+    translations: list[str] = Field(validation_alias='translation_words')
     part_of_speech: str | None
     level: str | None
     audio_url: str | None
@@ -50,6 +50,7 @@ class AnswerTypo(BaseModel):
 class TelegramWordAnswerData(BaseModel):
     success: bool
     answer: str
+    correct_answer: str | None = None
     is_correct: bool | None = None
     has_typo: bool = False
     typo: AnswerTypo | None = None

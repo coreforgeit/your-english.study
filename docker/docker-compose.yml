@@ -52,11 +52,13 @@ services:
       - "8000:8000"
     volumes:
       - ..:/app
+      - ../temp:/app/temp
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_started
+
 
   frontend:
     build:

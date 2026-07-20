@@ -1,4 +1,6 @@
 import logging
+import unicodedata
+from time import perf_counter
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
 from pydantic import ValidationError
@@ -16,6 +18,7 @@ from api.schemas.telegram_app import (
     TelegramWordsRequest,
     TelegramWordsResponse,
 )
+from api.services.audio_answer_samples import AudioAnswerSampleService
 from api.services.telegram_app import TelegramAppService
 
 
@@ -89,6 +92,7 @@ async def answer_word(
     current_user: CurrentTelegramUser = Depends(get_current_telegram_user),
     session: AsyncSession = Depends(get_session),
 ) -> TelegramWordAnswerResponse:
+    total_started_at = perf_counter()
     payload, audio_file = await _parse_answer_request(request)
     logger.info(
         'Answer request: user_id=%s word_id=%s answer_type=%s answer_language=%s',
@@ -123,15 +127,18 @@ async def answer_word(
                 detail='Audio transcription failed',
             ) from exc
 
-        logger.info(
-            f'Аудио расшифровано: word_id={payload.word_id}, '
-            f'text={transcription.text!r}'
-        )
+        logger.info(f'Аудио расшифровано: {transcription.text!r} ')
+
+        processed_answer = _postprocess_transcribed_answer(transcription.text)
+        logger.info('Audio transcription postprocessed: raw=%r processed=%r', transcription.text, processed_answer)
+
+        answer_lookup_started_at = perf_counter()
         check_result = await service.check_text_answer(
             word_id=payload.word_id,
             answer_language=payload.answer_language,
-            answer=transcription.text,
+            answer=processed_answer,
         )
+        answer_lookup_duration_ms = (perf_counter() - answer_lookup_started_at) * 1000
         if check_result is None:
             logger.info(f'Ответ отклонен: слово не найдено word_id={payload.word_id}')
             raise HTTPException(
@@ -144,19 +151,56 @@ async def answer_word(
             word_id=payload.word_id,
             answer_type=payload.answer_type,
             answer_language=payload.answer_language,
-            user_answer=transcription.text,
+            user_answer=processed_answer,
             check_result=check_result,
         )
 
-        return TelegramWordAnswerResponse(
+        total_duration_ms = (perf_counter() - total_started_at) * 1000
+        logger.info(
+            'Answer audio timing: user_id=%s word_id=%s trim_ms=%.2f '
+            'transcription_ms=%.2f answer_lookup_ms=%.2f total_ms=%.2f transcription=%r',
+            current_user.id,
+            payload.word_id,
+            transcription.trim_duration_ms,
+            transcription.transcription_duration_ms,
+            answer_lookup_duration_ms,
+            total_duration_ms,
+            processed_answer,
+        )
+
+        response = TelegramWordAnswerResponse(
             data=TelegramWordAnswerData(
                 success=True,
-                answer=transcription.text,
+                answer=processed_answer,
+                correct_answer=check_result.correct_answer,
                 is_correct=check_result.is_correct,
                 has_typo=check_result.has_typo,
                 typo=check_result.typo,
             ),
         )
+        # try:
+        #     AudioAnswerSampleService().save(
+        #         audio=audio_bytes,
+        #         request_data={
+        #             'word_id': payload.word_id,
+        #             'answer_type': payload.answer_type,
+        #             'answer_language': payload.answer_language,
+        #             'audio_file': {
+        #                 'filename': audio_file.filename or 'answer.webm',
+        #                 'content_type': audio_file.content_type or 'audio/webm',
+        #                 'size': len(audio_bytes),
+        #                 'form_field': 'audio_file',
+        #             },
+        #         },
+        #         response_data=response.model_dump(mode='json'),
+        #         answer_language=payload.answer_language,
+        #         transcription=transcription.text,
+        #         original_filename=audio_file.filename or 'answer.webm',
+        #         user_id=current_user.id,
+        #     )
+        # except OSError:
+        #     logger.exception('Failed to save audio answer sample: word_id=%s', payload.word_id)
+        return response
 
     if payload.answer is None:
         logger.info('Text answer rejected: answer is missing word_id=%s', payload.word_id)
@@ -166,11 +210,13 @@ async def answer_word(
         )
 
     text_answer = payload.answer.strip()
+    answer_lookup_started_at = perf_counter()
     check_result = await service.check_text_answer(
         word_id=payload.word_id,
         answer_language=payload.answer_language,
         answer=text_answer,
     )
+    answer_lookup_duration_ms = (perf_counter() - answer_lookup_started_at) * 1000
     if check_result is None:
         logger.info('Answer rejected: word not found word_id=%s', payload.word_id)
         raise HTTPException(
@@ -187,10 +233,21 @@ async def answer_word(
         check_result=check_result,
     )
 
+    total_duration_ms = (perf_counter() - total_started_at) * 1000
+    logger.info(
+        'Answer text timing: user_id=%s word_id=%s answer_lookup_ms=%.2f total_ms=%.2f answer=%r',
+        current_user.id,
+        payload.word_id,
+        answer_lookup_duration_ms,
+        total_duration_ms,
+        text_answer,
+    )
+
     return TelegramWordAnswerResponse(
         data=TelegramWordAnswerData(
             success=True,
             answer=text_answer,
+            correct_answer=check_result.correct_answer,
             is_correct=check_result.is_correct,
             has_typo=check_result.has_typo,
             typo=check_result.typo,
@@ -226,3 +283,12 @@ async def _parse_answer_request(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=exc.errors(),
         ) from exc
+
+
+def _postprocess_transcribed_answer(value: str) -> str:
+    without_punctuation = ''.join(
+        char
+        for char in value
+        if not unicodedata.category(char).startswith('P')
+    )
+    return ' '.join(without_punctuation.lower().split())

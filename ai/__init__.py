@@ -1,4 +1,1 @@
-from ai.transcriptions import AudioTranscriptionService
-
-
-__all__ = ['AudioTranscriptionService']
+__all__: list[str] = []

@@ -19,9 +19,9 @@ class LearnedWord(Base):
         index=True,
     )
     word_id: Mapped[int] = mapped_column(
-        sa.ForeignKey('words.id', ondelete='CASCADE'),
+        sa.ForeignKey('words_en.id', ondelete='CASCADE'),
         index=True,
     )
 
     user: Mapped['User'] = relationship(back_populates='learned_words')
-    word: Mapped['Word'] = relationship(back_populates='learned_by_users')
+    word: Mapped['WordEn'] = relationship(back_populates='learned_by_users')

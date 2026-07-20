@@ -5,19 +5,18 @@ from db.models.base import Base
 from db.models.enums import WordCountry, WordStatus
 
 
-class Word(Base):
-    __tablename__ = 'words'
+class WordEn(Base):
+    __tablename__ = 'words_en'
     __table_args__ = (
         sa.UniqueConstraint(
             'word',
             'part_of_speech',
-            name='uq_words_word_part_of_speech',
+            name='uq_words_en_word_part_of_speech',
         ),
     )
 
     word: Mapped[str] = mapped_column(sa.String(255), index=True)
     pronunciation: Mapped[str | None] = mapped_column(sa.String(255))
-    translation: Mapped[str] = mapped_column(sa.String(255))
     part_of_speech: Mapped[str | None] = mapped_column(sa.String(100))
     country: Mapped[WordCountry] = mapped_column(
         sa.Enum(
@@ -46,9 +45,14 @@ class Word(Base):
             values_callable=lambda enum_cls: [item.value for item in enum_cls],
         ),
         default=WordStatus.ALLOWED,
-        server_default=WordStatus.ALLOWED.value,
+        server_default=WordStatus.ALLOWED,
     )
 
+    translations: Mapped[list['WordRu']] = relationship(
+        back_populates='word_en',
+        cascade='all, delete-orphan',
+        lazy='selectin',
+    )
     learned_by_users: Mapped[list['LearnedWord']] = relationship(
         back_populates='word',
         cascade='all, delete-orphan',
@@ -57,3 +61,21 @@ class Word(Base):
         back_populates='word',
         cascade='all, delete-orphan',
     )
+    synonym_links: Mapped[list['WordEnSynonym']] = relationship(
+        back_populates='word_en',
+        cascade='all, delete-orphan',
+        foreign_keys='WordEnSynonym.word_en_id',
+    )
+    synonym_of_links: Mapped[list['WordEnSynonym']] = relationship(
+        back_populates='synonym_word_en',
+        cascade='all, delete-orphan',
+        foreign_keys='WordEnSynonym.synonym_word_en_id',
+    )
+
+    @property
+    def translation(self) -> str:
+        return ', '.join(translation.word for translation in self.translations)
+
+    @property
+    def translation_words(self) -> list[str]:
+        return [translation.word for translation in self.translations]
