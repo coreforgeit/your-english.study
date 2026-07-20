@@ -10,34 +10,38 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 from ai.errors import AudioTranscriptionError
 from ai.transcriptions import AudioTranscriptionService
 from api.dependencies import CurrentTelegramUser, get_current_telegram_user, get_session
-from api.schemas.telegram_app import (
+from api.schemas.vocabulary import (
     AnswerType,
-    TelegramWordAnswerData,
-    TelegramWordAnswerRequest,
-    TelegramWordAnswerResponse,
-    TelegramWordsRequest,
-    TelegramWordsResponse,
+    VocabularyWordAnswerData,
+    VocabularyWordAnswerRequest,
+    VocabularyWordAnswerResponse,
+    VocabularyWordsRequest,
+    VocabularyWordsResponse,
+    WordReviewResponse,
 )
 from api.services.audio_answer_samples import AudioAnswerSampleService
-from api.services.telegram_app import TelegramAppService
+from api.services.vocabulary import VocabularyService
+from db.models import WordEn
+from db.models.enums import WordStatus
+from worker.tasks import test
 
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix='/telegram-app', tags=['telegram-app'])
+router = APIRouter(prefix='/telegram-app', tags=['vocabulary'])
 
 
-@router.post('/words/reapit', response_model=TelegramWordsResponse)
+@router.post('/words/reapit', response_model=VocabularyWordsResponse)
 async def repeat_word(
-    payload: TelegramWordsRequest,
+    payload: VocabularyWordsRequest,
     current_user: CurrentTelegramUser = Depends(get_current_telegram_user),
     session: AsyncSession = Depends(get_session),
-) -> TelegramWordsResponse:
+) -> VocabularyWordsResponse:
     logger.info(
         'Repeat word request: user_id=%s level=%s',
         current_user.id,
         payload.level,
     )
-    service = TelegramAppService(session)
+    service = VocabularyService(session)
     word = await service.get_learned_word_for_user(
         user_id=current_user.id,
         payload=payload,
@@ -53,21 +57,21 @@ async def repeat_word(
             detail='Word not found',
         )
 
-    return TelegramWordsResponse(data=word)
+    return VocabularyWordsResponse(data=word)
 
 
-@router.post('/words/learn', response_model=TelegramWordsResponse)
+@router.post('/words/learn', response_model=VocabularyWordsResponse)
 async def learn_word(
-    payload: TelegramWordsRequest,
+    payload: VocabularyWordsRequest,
     current_user: CurrentTelegramUser = Depends(get_current_telegram_user),
     session: AsyncSession = Depends(get_session),
-) -> TelegramWordsResponse:
+) -> VocabularyWordsResponse:
     logger.info(
         'Learn word request: user_id=%s level=%s',
         current_user.id,
         payload.level,
     )
-    service = TelegramAppService(session)
+    service = VocabularyService(session)
     word = await service.get_new_word_for_user(
         user_id=current_user.id,
         payload=payload,
@@ -83,15 +87,44 @@ async def learn_word(
             detail='Word not found',
         )
 
-    return TelegramWordsResponse(data=word)
+    return VocabularyWordsResponse(data=word)
 
 
-@router.post('/words/answer', response_model=TelegramWordAnswerResponse)
+@router.post(
+    '/words/{word_id}/review',
+    response_model=WordReviewResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def request_word_review(
+    word_id: int,
+    current_user: CurrentTelegramUser = Depends(get_current_telegram_user),
+    session: AsyncSession = Depends(get_session),
+) -> WordReviewResponse:
+    word = await session.get(WordEn, word_id)
+    if word is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Word not found')
+
+    word.status = WordStatus.CHECKING
+    await session.flush()
+
+    queued_task = await test.kiq(
+        user_id=current_user.id,
+        word_id=word_id,
+    )
+
+    return WordReviewResponse(
+        success=True,
+        message='Слово отправлено на проверку',
+        task_id=queued_task.task_id,
+    )
+
+
+@router.post('/words/answer', response_model=VocabularyWordAnswerResponse)
 async def answer_word(
     request: Request,
     current_user: CurrentTelegramUser = Depends(get_current_telegram_user),
     session: AsyncSession = Depends(get_session),
-) -> TelegramWordAnswerResponse:
+) -> VocabularyWordAnswerResponse:
     total_started_at = perf_counter()
     payload, audio_file = await _parse_answer_request(request)
     logger.info(
@@ -102,7 +135,7 @@ async def answer_word(
         payload.answer_language,
     )
 
-    service = TelegramAppService(session)
+    service = VocabularyService(session)
 
     if payload.answer_type == AnswerType.AUDIO:
         if audio_file is None:
@@ -168,8 +201,8 @@ async def answer_word(
             processed_answer,
         )
 
-        response = TelegramWordAnswerResponse(
-            data=TelegramWordAnswerData(
+        response = VocabularyWordAnswerResponse(
+            data=VocabularyWordAnswerData(
                 success=True,
                 answer=processed_answer,
                 correct_answer=check_result.correct_answer,
@@ -243,8 +276,8 @@ async def answer_word(
         text_answer,
     )
 
-    return TelegramWordAnswerResponse(
-        data=TelegramWordAnswerData(
+    return VocabularyWordAnswerResponse(
+        data=VocabularyWordAnswerData(
             success=True,
             answer=text_answer,
             correct_answer=check_result.correct_answer,
@@ -257,7 +290,7 @@ async def answer_word(
 
 async def _parse_answer_request(
     request: Request,
-) -> tuple[TelegramWordAnswerRequest, UploadFile | None]:
+) -> tuple[VocabularyWordAnswerRequest, UploadFile | None]:
     content_type = request.headers.get('content-type', '')
     audio_file = None
 
@@ -277,7 +310,7 @@ async def _parse_answer_request(
         raw_payload = await request.json()
 
     try:
-        return TelegramWordAnswerRequest.model_validate(raw_payload), audio_file
+        return VocabularyWordAnswerRequest.model_validate(raw_payload), audio_file
     except ValidationError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

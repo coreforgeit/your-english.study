@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -5,10 +7,23 @@ from api.routers import api_router
 from api.routers.health import router as health_router
 from core.config import settings
 from core.logging import setup_logging
+from worker.broker import broker
 
 setup_logging()
 
-app = FastAPI(title='English Practice API')
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    if not broker.is_worker_process:
+        await broker.startup()
+    try:
+        yield
+    finally:
+        if not broker.is_worker_process:
+            await broker.shutdown()
+
+
+app = FastAPI(title='English Practice API', lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,

@@ -3,7 +3,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class TelegramWordsRequest(BaseModel):
+class VocabularyWordsRequest(BaseModel):
     level: str | None = None
 
 
@@ -19,7 +19,7 @@ class WordRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class TelegramWordsResponse(BaseModel):
+class VocabularyWordsResponse(BaseModel):
     data: WordRead
 
 
@@ -33,7 +33,7 @@ class AnswerLanguage(StrEnum):
     RU = 'ru'
 
 
-class TelegramWordAnswerRequest(BaseModel):
+class VocabularyWordAnswerRequest(BaseModel):
     word_id: int
     answer_type: AnswerType
     answer_language: AnswerLanguage
@@ -47,7 +47,7 @@ class AnswerTypo(BaseModel):
     actual: str | None = None
 
 
-class TelegramWordAnswerData(BaseModel):
+class VocabularyWordAnswerData(BaseModel):
     success: bool
     answer: str
     correct_answer: str | None = None
@@ -56,5 +56,11 @@ class TelegramWordAnswerData(BaseModel):
     typo: AnswerTypo | None = None
 
 
-class TelegramWordAnswerResponse(BaseModel):
-    data: TelegramWordAnswerData
+class VocabularyWordAnswerResponse(BaseModel):
+    data: VocabularyWordAnswerData
+
+
+class WordReviewResponse(BaseModel):
+    success: bool
+    message: str
+    task_id: str

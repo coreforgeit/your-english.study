@@ -26,6 +26,25 @@ services:
     volumes:
       - redis_data:/data
 
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    container_name: rabbitmq_ep
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-english}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-change_me}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: pgadmin_ep
@@ -58,6 +77,33 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      rabbitmq:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/dockerfiles/api.Dockerfile
+    container_name: worker_ep
+    restart: unless-stopped
+    command:
+      - taskiq
+      - worker
+      - worker.broker:broker
+      - worker.tasks
+      - --workers
+      - "1"
+      - --max-async-tasks
+      - "10"
+      - --log-level
+      - INFO
+    env_file:
+      - ../.env
+    volumes:
+      - ..:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
 
 
   frontend:
@@ -98,4 +144,5 @@ volumes:
   postgres_data:
   pgadmin_data:
   redis_data:
+  rabbitmq_data:
   frontend_node_modules:

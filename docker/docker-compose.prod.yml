@@ -20,6 +20,21 @@ services:
     volumes:
       - redis_data:/data
 
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Set RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
   api:
     image: ${API_IMAGE:?Set API_IMAGE}
     restart: unless-stopped
@@ -30,12 +45,34 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      rabbitmq:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 20s
+
+  worker:
+    image: ${API_IMAGE:?Set API_IMAGE}
+    restart: unless-stopped
+    command:
+      - taskiq
+      - worker
+      - worker.broker:broker
+      - worker.tasks
+      - --workers
+      - "1"
+      - --max-async-tasks
+      - "10"
+      - --log-level
+      - INFO
+    env_file:
+      - ../.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
 
   bot:
     image: ${BOT_IMAGE:?Set BOT_IMAGE}
@@ -73,5 +110,6 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  rabbitmq_data:
   caddy_data:
   caddy_config:

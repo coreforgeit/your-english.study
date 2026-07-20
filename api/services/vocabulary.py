@@ -7,7 +7,7 @@ from sqlalchemy.dialects import postgresql as psql
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from api.schemas.telegram_app import AnswerLanguage, TelegramWordsRequest
+from api.schemas.vocabulary import AnswerLanguage, VocabularyWordsRequest
 from db.models import AnswerError, LearnedWord, WordEn, WordEnSynonym
 from db.models.enums import WordStatus
 
@@ -23,14 +23,14 @@ class AnswerCheckResult:
     correct_answer: str | None = None
 
 
-class TelegramAppService:
+class VocabularyService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
     async def get_learned_word_for_user(
         self,
         user_id: int,
-        payload: TelegramWordsRequest,
+        payload: VocabularyWordsRequest,
     ) -> WordEn | None:
         learned_words_stmt = sa.select(LearnedWord.word_id).where(
             LearnedWord.user_id == user_id,
@@ -43,7 +43,7 @@ class TelegramAppService:
     async def get_new_word_for_user(
         self,
         user_id: int,
-        payload: TelegramWordsRequest,
+        payload: VocabularyWordsRequest,
     ) -> WordEn | None:
         learned_words_stmt = sa.select(LearnedWord.word_id).where(
             LearnedWord.user_id == user_id,
@@ -260,7 +260,7 @@ class TelegramAppService:
 
     async def _select_word(
         self,
-        payload: TelegramWordsRequest,
+        payload: VocabularyWordsRequest,
         extra_filters: list[sa.ColumnElement[bool]] | None = None,
     ) -> WordEn | None:
         stmt = (

@@ -141,10 +141,10 @@ jobs:
           compose config --quiet
 
           echo "Starting infrastructure services"
-          compose up -d db redis
+          compose up -d db redis rabbitmq
 
           echo "Pulling new runtime images"
-          compose pull api bot frontend caddy
+          compose pull api worker bot frontend caddy
 
           set -a
           . ./.deploy.env
@@ -154,21 +154,21 @@ jobs:
           docker image inspect "$API_IMAGE" "$BOT_IMAGE" "$FRONTEND_IMAGE" >/dev/null
 
           echo "Stopping old app containers"
-          compose stop api bot frontend caddy || true
+          compose stop api worker bot frontend caddy || true
 
           echo "Removing old app containers"
-          compose rm -f api bot frontend caddy || true
+          compose rm -f api worker bot frontend caddy || true
 
           echo "Running migrations"
           compose run -T --rm api alembic upgrade head
           echo "Migrations completed"
 
           echo "Starting new app containers"
-          compose up -d --force-recreate --remove-orphans api bot frontend caddy
+          compose up -d --force-recreate --remove-orphans api worker bot frontend caddy
 
           echo "Checking service status"
           compose ps -a
-          for service in api bot frontend caddy; do
+          for service in api worker bot frontend caddy; do
             status="$(compose ps --status running --services "$service")"
             if [ "$status" != "$service" ]; then
               echo "Service $service is not running"

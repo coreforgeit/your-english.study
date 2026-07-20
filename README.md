@@ -23,6 +23,15 @@ Services:
 - PostgreSQL: `localhost:5432`
 - PgAdmin: `http://localhost:5050`
 - Redis: `localhost:6379`
+- RabbitMQ: `localhost:5672`
+- RabbitMQ management UI: `http://localhost:15672`
+
+The `POST /api/telegram-app/words/{word_id}/review` endpoint marks the word as `checking`
+and sends the `test` task to RabbitMQ. Follow worker logs with:
+
+```powershell
+docker compose -f docker/docker-compose.yml logs -f worker
+```
 
 ## Production Docker Deploy
 

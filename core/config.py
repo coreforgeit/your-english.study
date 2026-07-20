@@ -1,3 +1,5 @@
+from urllib.parse import quote
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ai.models import TranscriptionModel
@@ -13,6 +15,10 @@ class Settings(BaseSettings):
     redis_host: str = 'redis'
     redis_port: int = 6379
     redis_db: int = 0
+    rabbitmq_host: str = 'rabbitmq'
+    rabbitmq_port: int = 5672
+    rabbitmq_user: str = 'english'
+    rabbitmq_password: str = 'change_me'
     bot_token: str = ''
     api_host: str = '0.0.0.0'
     api_port: int = 8000
@@ -41,6 +47,14 @@ class Settings(BaseSettings):
     @property
     def redis_url(self) -> str:
         return f'redis://{self.redis_host}:{self.redis_port}/{self.redis_db}'
+
+    @property
+    def rabbitmq_url(self) -> str:
+        return (
+            f'amqp://{quote(self.rabbitmq_user, safe="")}:'
+            f'{quote(self.rabbitmq_password, safe="")}'
+            f'@{self.rabbitmq_host}:{self.rabbitmq_port}/'
+        )
 
     @property
     def cors_origins(self) -> list[str]:
