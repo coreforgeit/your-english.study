@@ -38,7 +38,7 @@ def upgrade() -> None:
     sa.Column('audio_url', sa.String(length=500), nullable=True),
     sa.Column('audio_file_name', sa.String(length=255), nullable=True),
     sa.Column('audio_tg_id', sa.String(length=255), nullable=True),
-    sa.Column('source', sa.String(length=255), server_default='default', nullable=False),
+    sa.Column('source', sa.String(length=255), server_default='base', nullable=False),
     sa.Column('status', sa.Enum('allowed', 'forbidden', name='word_status', native_enum=False), server_default='allowed', nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),

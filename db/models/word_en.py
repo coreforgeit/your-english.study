@@ -60,6 +60,7 @@ class WordEn(Base):
         server_default=WordStatus.ALLOWED,
     )
 
+
     translations: Mapped[list['WordRu']] = relationship(
         back_populates='word_en',
         cascade='all, delete-orphan',

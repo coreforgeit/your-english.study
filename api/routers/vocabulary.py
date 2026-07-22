@@ -17,6 +17,7 @@ from api.schemas.vocabulary import (
     VocabularyWordAnswerResponse,
     VocabularyWordsRequest,
     VocabularyWordsResponse,
+    WordReviewRequest,
     WordReviewResponse,
 )
 from api.services.audio_answer_samples import AudioAnswerSampleService
@@ -97,6 +98,7 @@ async def learn_word(
 )
 async def request_word_review(
     word_id: int,
+    payload: WordReviewRequest | None = None,
     current_user: CurrentTelegramUser = Depends(get_current_telegram_user),
     session: AsyncSession = Depends(get_session),
 ) -> WordReviewResponse:
@@ -107,7 +109,11 @@ async def request_word_review(
     word.status = WordStatus.CHECKING
     await session.flush()
 
-    queued_task = await review_word.kiq(word_id=word_id)
+    model = payload.model if payload is not None else WordReviewRequest().model
+    queued_task = await review_word.kiq(
+        word_id=word_id,
+        model=model.value,
+    )
 
     return WordReviewResponse(
         success=True,

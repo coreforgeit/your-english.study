@@ -2,7 +2,7 @@ from urllib.parse import quote
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from ai.enums import TextModel, TranscriptionModel
+from ai.enums import TranscriptionModel
 
 
 class Settings(BaseSettings):
@@ -29,7 +29,6 @@ class Settings(BaseSettings):
     log_level: str = 'INFO'
     open_ai_api_key: str = ''
     open_ai_transcription_model: TranscriptionModel = TranscriptionModel.GPT_4O_MINI_TRANSCRIBE
-    open_ai_vocabulary_review_model: TextModel = TextModel.GPT_5_6_LUNA
     # open_ai_transcription_model: TranscriptionModel = TranscriptionModel.GPT_4O_TRANSCRIBE
 
     model_config = SettingsConfigDict(

@@ -2,6 +2,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ai.enums import TextModel
+
 
 class VocabularyWordsRequest(BaseModel):
     level: str | None = None
@@ -64,3 +66,7 @@ class WordReviewResponse(BaseModel):
     success: bool
     message: str
     task_id: str
+
+
+class WordReviewRequest(BaseModel):
+    model: TextModel = TextModel.GPT_4O_MINI

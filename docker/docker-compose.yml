@@ -70,7 +70,11 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ..:/app
+      - ../api:/app/api
+      - ../ai:/app/ai
+      - ../core:/app/core
+      - ../db:/app/db
+      - ../worker:/app/worker
       - ../temp:/app/temp
     depends_on:
       db:
@@ -88,12 +92,16 @@ services:
     restart: unless-stopped
     env_file:
       - ../.env
+    volumes:
+      - ../worker:/app/worker
+      - ../ai:/app/ai
+      - ../core:/app/core
+      - ../db:/app/db
     depends_on:
       db:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-
 
   frontend:
     build:
@@ -107,7 +115,8 @@ services:
     ports:
       - "5173:5173"
     volumes:
-      - ../frontend:/app/frontend
+      - ..:/app
+      - ../temp:/app/temp
       - frontend_node_modules:/app/frontend/node_modules
     depends_on:
       api:
@@ -122,7 +131,11 @@ services:
     env_file:
       - ../.env
     volumes:
-      - ..:/app
+      - ../bot:/app/bot
+      - ../ai:/app/ai
+      - ../core:/app/core
+      - ../db:/app/db
+      - ../worker:/app/worker
     depends_on:
       db:
         condition: service_healthy

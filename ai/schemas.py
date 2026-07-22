@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -21,3 +23,8 @@ class VocabularyReviewResult(BaseModel):
     translations: list[str]
     synonyms: list[VocabularySynonym]
     is_appropriate: bool
+    level: Literal['A1', 'A2', 'B1', 'B2', 'C1', 'C2']
+
+
+class VocabularyCreationResult(VocabularyReviewResult):
+    part_of_speech: str

@@ -4,6 +4,7 @@ from urllib.parse import quote
 import httpx
 
 
+# TODO: урл в общий конфиг
 DICTIONARY_API_URL = 'https://api.dictionaryapi.dev/api/v2/entries/en/{word}'
 
 

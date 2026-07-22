@@ -12,9 +12,9 @@ RUN apt-get update \
 COPY worker/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY worker ./worker
-COPY ai ./ai
-COPY core ./core
-COPY db ./db
+#COPY worker ./worker
+#COPY ai ./ai
+#COPY core ./core
+#COPY db ./db
 
 CMD ["taskiq", "worker", "worker.broker:broker", "worker.vocabulary.tasks", "--workers", "1", "--max-async-tasks", "10", "--log-level", "INFO"]
