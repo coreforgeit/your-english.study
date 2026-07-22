@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
+from ai.enums import TextModel
 from ai.errors import AudioTranscriptionError
 from ai.transcriptions import AudioTranscriptionService
 from api.dependencies import CurrentTelegramUser, get_current_telegram_user, get_session
@@ -88,11 +89,17 @@ async def learn_word(
             detail='Word not found',
         )
 
+    if not word.is_reviewed:
+        await review_word.kiq(
+            word_id=word.id,
+            model=WordReviewRequest().model,
+        )
+
     return VocabularyWordsResponse(data=word)
 
 
 @router.post(
-    '/words/{word_id}/review',
+    path='/words/{word_id}/review',
     response_model=WordReviewResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
@@ -106,20 +113,17 @@ async def request_word_review(
     if word is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Word not found')
 
+    model = payload.model if payload is not None else WordReviewRequest().model
+
     word.status = WordStatus.CHECKING
     await session.flush()
 
-    model = payload.model if payload is not None else WordReviewRequest().model
-    queued_task = await review_word.kiq(
-        word_id=word_id,
+    await review_word.kiq(
+        word_id=word.id,
         model=model.value,
     )
 
-    return WordReviewResponse(
-        success=True,
-        message='Слово отправлено на проверку',
-        task_id=queued_task.task_id,
-    )
+    return WordReviewResponse(success=True)
 
 
 @router.post('/words/answer', response_model=VocabularyWordAnswerResponse)
@@ -214,28 +218,7 @@ async def answer_word(
                 typo=check_result.typo,
             ),
         )
-        # try:
-        #     AudioAnswerSampleService().save(
-        #         audio=audio_bytes,
-        #         request_data={
-        #             'word_id': payload.word_id,
-        #             'answer_type': payload.answer_type,
-        #             'answer_language': payload.answer_language,
-        #             'audio_file': {
-        #                 'filename': audio_file.filename or 'answer.webm',
-        #                 'content_type': audio_file.content_type or 'audio/webm',
-        #                 'size': len(audio_bytes),
-        #                 'form_field': 'audio_file',
-        #             },
-        #         },
-        #         response_data=response.model_dump(mode='json'),
-        #         answer_language=payload.answer_language,
-        #         transcription=transcription.text,
-        #         original_filename=audio_file.filename or 'answer.webm',
-        #         user_id=current_user.id,
-        #     )
-        # except OSError:
-        #     logger.exception('Failed to save audio answer sample: word_id=%s', payload.word_id)
+
         return response
 
     if payload.answer is None:

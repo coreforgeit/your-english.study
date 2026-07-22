@@ -37,13 +37,10 @@ class VocabularyReviewService:
             .options(selectinload(WordEn.translations)),
         )
 
-        logger.info(f' ')
-        logger.info(f'review: {word_id} {word.word}')
         if word is None:
             raise LookupError(f'Слово {word_id} не найдено')
 
-        if word.is_reviewed:
-            return word
+        logger.info('Запущена проверка слова: word_id=%s word=%s', word_id, word.word)
 
         await self._fill_dictionary_data(word)
         review = await review_vocabulary_word(
