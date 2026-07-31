@@ -7,9 +7,10 @@ from sqlalchemy.dialects import postgresql as psql
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from api.schemas.vocabulary import AnswerLanguage, VocabularyWordsRequest
-from db.models import AnswerError, LearnedWord, WordEn, WordEnSynonym
-from db.models.enums import WordStatus
+from api.schemas.vocabulary import VocabularyWordsRequest
+from core.config import settings
+from db.models import LearnedWord, WordEn, WordEnSynonym
+from enums import AnswerLanguage, LearnedWordStatus, WordStatus
 
 
 logger = logging.getLogger(__name__)
@@ -32,13 +33,48 @@ class VocabularyService:
         user_id: int,
         payload: VocabularyWordsRequest,
     ) -> WordEn | None:
-        learned_words_stmt = sa.select(LearnedWord.word_id).where(
-            LearnedWord.user_id == user_id,
+        stmt = (
+            sa.select(WordEn)
+            .join(LearnedWord, LearnedWord.word_id == WordEn.id)
+            .options(selectinload(WordEn.translations))
+            .where(
+                LearnedWord.user_id == user_id,
+                WordEn.status == WordStatus.ALLOWED,
+            )
+            .order_by(
+                LearnedWord.review_count,
+                sa.func.random(),
+            )
+            .limit(1)
         )
-        return await self._select_word(
-            payload=payload,
-            extra_filters=[WordEn.id.in_(learned_words_stmt)],
+        if payload.level is not None:
+            stmt = stmt.where(WordEn.level == payload.level)
+
+        return await self.session.scalar(stmt)
+
+    async def get_interval_repetition_word_ids(self, user_id: int) -> list[int]:
+        created_date = sa.cast(LearnedWord.created_at, sa.Date)
+        last_reviewed_date = sa.cast(LearnedWord.last_reviewed_at, sa.Date)
+        repetition_dates = [
+            sa.func.current_date() - interval
+            for interval in settings.vocabulary_repetition_intervals
+        ]
+
+        stmt = (
+            sa.select(LearnedWord.word_id)
+            .where(
+                LearnedWord.user_id == user_id,
+                LearnedWord.status == LearnedWordStatus.NEW,
+                created_date.in_(repetition_dates),
+                sa.or_(
+                    LearnedWord.last_reviewed_at.is_(None),
+                    last_reviewed_date < sa.func.current_date(),
+                ),
+            )
+            .order_by(LearnedWord.created_at, LearnedWord.id)
         )
+        result = await self.session.scalars(stmt)
+        return list(result.all())
 
     async def get_new_word_for_user(
         self,

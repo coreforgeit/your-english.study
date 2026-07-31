@@ -1,0 +1,25 @@
+import sqlalchemy as sa
+from sqlalchemy.orm import Mapped, mapped_column
+
+from db.models.base import Base
+
+
+class WordRepetitionAnswer(Base):
+    __tablename__ = 'word_repetition_answers'
+    __table_args__ = (
+        sa.Index(
+            'ix_word_repetition_answers_user_word_correct_created',
+            'user_id',
+            'word_id',
+            'is_correct',
+            'created_at',
+        ),
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        sa.ForeignKey('users.id', ondelete='CASCADE'),
+    )
+    word_id: Mapped[int] = mapped_column(
+        sa.ForeignKey('words_en.id', ondelete='CASCADE'),
+    )
+    is_correct: Mapped[bool] = mapped_column(sa.Boolean)

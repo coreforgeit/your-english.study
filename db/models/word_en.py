@@ -2,7 +2,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import Base
-from db.models.enums import WordCountry, WordSource, WordStatus
+from enums import WordCountry, WordSource, WordStatus
 
 
 class WordEn(Base):

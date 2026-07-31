@@ -7,12 +7,11 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
-from ai.enums import TextModel
 from ai.errors import AudioTranscriptionError
 from ai.transcriptions import AudioTranscriptionService
 from api.dependencies import CurrentTelegramUser, get_current_telegram_user, get_session
 from api.schemas.vocabulary import (
-    AnswerType,
+    VocabularyIntervalRepetitionsResponse,
     VocabularyWordAnswerData,
     VocabularyWordAnswerRequest,
     VocabularyWordAnswerResponse,
@@ -24,12 +23,25 @@ from api.schemas.vocabulary import (
 from api.services.audio_answer_samples import AudioAnswerSampleService
 from api.services.vocabulary import VocabularyService
 from db.models import WordEn
-from db.models.enums import WordStatus
-from worker.vocabulary.tasks import review_word
+from enums import AnswerType, TextModel, WordStatus
+from worker.vocabulary.tasks import record_word_repetition, review_word
 
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix='/telegram-app', tags=['vocabulary'])
+
+
+@router.get(
+    '/words/interval-repetitions',
+    response_model=VocabularyIntervalRepetitionsResponse,
+)
+async def get_interval_repetitions(
+    current_user: CurrentTelegramUser = Depends(get_current_telegram_user),
+    session: AsyncSession = Depends(get_session),
+) -> VocabularyIntervalRepetitionsResponse:
+    service = VocabularyService(session)
+    word_ids = await service.get_interval_repetition_word_ids(current_user.id)
+    return VocabularyIntervalRepetitionsResponse(data=word_ids)
 
 
 @router.post('/words/reapit', response_model=VocabularyWordsResponse)
@@ -134,6 +146,7 @@ async def answer_word(
 ) -> VocabularyWordAnswerResponse:
     total_started_at = perf_counter()
     payload, audio_file = await _parse_answer_request(request)
+
     logger.info(
         'Answer request: user_id=%s word_id=%s answer_type=%s answer_language=%s',
         current_user.id,
@@ -195,6 +208,12 @@ async def answer_word(
             check_result=check_result,
         )
 
+        await _enqueue_word_repetition_record(
+            user_id=current_user.id,
+            word_id=payload.word_id,
+            is_correct=check_result.is_correct,
+        )
+
         total_duration_ms = (perf_counter() - total_started_at) * 1000
         logger.info(
             'Answer audio timing: user_id=%s word_id=%s trim_ms=%.2f '
@@ -250,6 +269,11 @@ async def answer_word(
         answer_language=payload.answer_language,
         user_answer=text_answer,
         check_result=check_result,
+    )
+    await _enqueue_word_repetition_record(
+        user_id=current_user.id,
+        word_id=payload.word_id,
+        is_correct=check_result.is_correct,
     )
 
     total_duration_ms = (perf_counter() - total_started_at) * 1000
@@ -311,3 +335,23 @@ def _postprocess_transcribed_answer(value: str) -> str:
         if not unicodedata.category(char).startswith('P')
     )
     return ' '.join(without_punctuation.lower().split())
+
+
+async def _enqueue_word_repetition_record(
+    *,
+    user_id: int,
+    word_id: int,
+    is_correct: bool,
+) -> None:
+    try:
+        await record_word_repetition.kiq(
+            user_id=user_id,
+            word_id=word_id,
+            is_correct=is_correct,
+        )
+    except Exception:
+        logger.exception(
+            'Не удалось отправить запись повторения в воркер: user_id=%s word_id=%s',
+            user_id,
+            word_id,
+        )

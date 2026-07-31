@@ -1,8 +1,6 @@
-from enum import StrEnum
-
 from pydantic import BaseModel, ConfigDict, Field
 
-from ai.enums import TextModel
+from enums import AnswerLanguage, AnswerType, TextModel
 
 
 class VocabularyWordsRequest(BaseModel):
@@ -25,14 +23,8 @@ class VocabularyWordsResponse(BaseModel):
     data: WordRead
 
 
-class AnswerType(StrEnum):
-    TEXT = 'text'
-    AUDIO = 'audio'
-
-
-class AnswerLanguage(StrEnum):
-    EN = 'en'
-    RU = 'ru'
+class VocabularyIntervalRepetitionsResponse(BaseModel):
+    data: list[int]
 
 
 class VocabularyWordAnswerRequest(BaseModel):
@@ -68,3 +60,4 @@ class WordReviewResponse(BaseModel):
 
 class WordReviewRequest(BaseModel):
     model: TextModel = TextModel.GPT_4O_MINI
+    # model: TextModel = TextModel.GPT_5_6_LUNA

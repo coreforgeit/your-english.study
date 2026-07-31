@@ -9,7 +9,7 @@ from ai.client import get_openai_client
 from ai.errors import AudioTranscriptionError
 from ai.prompts import get_transcription_prompt
 from ai.schemas import AudioTranscriptionResult
-from core.config import settings
+from enums import AnswerLanguage, TranscriptionModel
 
 
 logger = logging.getLogger(__name__)
@@ -50,8 +50,9 @@ class AudioTranscriptionService:
             )
             trim_duration_ms = 0.0
 
+        transcription_model = self._get_transcription_model(language)
         transcription_params = {
-            'model': settings.open_ai_transcription_model.value,
+            'model': transcription_model.value,
             'file': file_payload,
         }
         if language is not None:
@@ -76,18 +77,21 @@ class AudioTranscriptionService:
 
         return AudioTranscriptionResult(
             text=response.text,
-            model=settings.open_ai_transcription_model.value,
+            model=transcription_model.value,
             trim_duration_ms=trim_duration_ms,
             transcription_duration_ms=transcription_duration_ms,
         )
 
     async def _comparison_models(self, file_payload, language, filename):
-        models = ('gpt-4o-transcribe', 'gpt-4o-mini-transcribe')
+        models = (
+            TranscriptionModel.GPT_4O_TRANSCRIBE,
+            TranscriptionModel.GPT_4O_MINI_TRANSCRIBE,
+        )
         response = None
         logger.info(f'---')
         for model in models:
             transcription_params = {
-                'model': model,
+                'model': model.value,
                 'file': file_payload,
             }
             if language:
@@ -104,13 +108,22 @@ class AudioTranscriptionService:
                 )
                 transcription_duration_ms = (perf_counter() - transcription_started_at) * 1000
 
-                logger.info(f'model: {model}')
+                logger.info(f'model: {model.value}')
                 logger.info(f'text: {response.text} | {transcription_duration_ms} | {response.usage.input_token_details}')
             except OpenAIError as exc:
                 logger.exception('OpenAI audio transcription failed')
                 raise AudioTranscriptionError('Audio transcription failed') from exc
         logger.info(f'---')
         return response
+
+    @staticmethod
+    def _get_transcription_model(
+        language: str | None,
+    ) -> TranscriptionModel:
+        if language == AnswerLanguage.RU:
+            return TranscriptionModel.GPT_4O_MINI_TRANSCRIBE
+
+        return TranscriptionModel.GPT_4O_TRANSCRIBE
 
     @staticmethod
     def _build_file_payload(

@@ -3,10 +3,11 @@ from typing import Any, TypeVar
 from pydantic import BaseModel
 
 from ai.client import get_openai_client
-from ai.enums import TextModel
 from ai.errors import VocabularyReviewError
 from ai.prompts import VOCABULARY_CREATION_PROMPT, VOCABULARY_REVIEW_PROMPT
 from ai.schemas import VocabularyCreationResult, VocabularyReviewResult
+from enums import AIRequestInitiator, AIRequestScenario, TextModel
+from worker.usage.tasks import save_text_model_usage
 
 
 VocabularyResult = TypeVar('VocabularyResult', bound=BaseModel)
@@ -74,6 +75,18 @@ async def _request_vocabulary_analysis(
         store=False,
         **request_options,
     )
+    usage = response.usage
+    await save_text_model_usage.kiq(
+        model=model.value,
+        initiator=AIRequestInitiator.SYSTEM.value,
+        scenario=AIRequestScenario.WORD_REVIEW.value,
+        input_tokens=usage.input_tokens,
+        cached_input_tokens=usage.input_tokens_details.cached_tokens,
+        output_tokens=usage.output_tokens,
+        reasoning_tokens=usage.output_tokens_details.reasoning_tokens,
+        total_tokens=usage.total_tokens,
+    )
+
     if response.output_parsed is None:
         raise VocabularyReviewError(
             f'AI returned no structured review for word {word!r}',

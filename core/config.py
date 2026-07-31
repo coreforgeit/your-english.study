@@ -1,9 +1,7 @@
 from urllib.parse import quote
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-from ai.enums import TranscriptionModel
-
 
 class Settings(BaseSettings):
     debug: bool = False
@@ -27,9 +25,10 @@ class Settings(BaseSettings):
     app_url: str = 'https://app.your-english.study'
     api_url: str = 'https://api.your-english.study'
     log_level: str = 'INFO'
+    vocabulary_repetition_intervals: list[int] = Field(
+        default_factory=lambda: [0, 1, 3, 7, 14],
+    )
     open_ai_api_key: str = ''
-    open_ai_transcription_model: TranscriptionModel = TranscriptionModel.GPT_4O_MINI_TRANSCRIBE
-    # open_ai_transcription_model: TranscriptionModel = TranscriptionModel.GPT_4O_TRANSCRIBE
 
     model_config = SettingsConfigDict(
         env_file='.env',

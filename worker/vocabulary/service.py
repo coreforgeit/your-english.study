@@ -4,7 +4,6 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from ai.enums import TextModel
 from ai.schemas import (
     VocabularyCreationResult,
     VocabularyReviewResult,
@@ -15,9 +14,8 @@ from db.models import (
     WordEn,
     WordEnSynonym,
     WordRu,
-    WordSource,
-    WordStatus,
 )
+from enums import TextModel, WordSource, WordStatus
 from worker.vocabulary.dictionary_api import get_dictionary_word_data
 
 

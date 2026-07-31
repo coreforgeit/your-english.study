@@ -70,10 +70,12 @@ services:
     ports:
       - "8000:8000"
     volumes:
+      - ../alembic.ini:/app/alembic.ini
       - ../api:/app/api
       - ../ai:/app/ai
       - ../core:/app/core
       - ../db:/app/db
+      - ../enums:/app/enums
       - ../worker:/app/worker
       - ../temp:/app/temp
     depends_on:
@@ -97,6 +99,7 @@ services:
       - ../ai:/app/ai
       - ../core:/app/core
       - ../db:/app/db
+      - ../enums:/app/enums
     depends_on:
       db:
         condition: service_healthy
@@ -135,6 +138,7 @@ services:
       - ../ai:/app/ai
       - ../core:/app/core
       - ../db:/app/db
+      - ../enums:/app/enums
       - ../worker:/app/worker
     depends_on:
       db:
