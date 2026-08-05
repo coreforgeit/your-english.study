@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     rabbitmq_user: str = 'english'
     rabbitmq_password: str = 'change_me'
     bot_token: str = ''
+    bot_token_test: str = ''
     api_host: str = '0.0.0.0'
     api_port: int = 8000
     site_url: str = 'https://your-english.study'
