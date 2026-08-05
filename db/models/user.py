@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import Base
+from db.models.user_settings import UserSettings
 
 
 class User(Base):
@@ -25,6 +26,12 @@ class User(Base):
     answer_errors: Mapped[list['AnswerError']] = relationship(
         back_populates='user',
         cascade='all, delete-orphan',
+    )
+    settings: Mapped[UserSettings] = relationship(
+        back_populates='user',
+        cascade='all, delete-orphan',
+        single_parent=True,
+        uselist=False,
     )
 
     @classmethod
@@ -54,4 +61,12 @@ class User(Base):
         )
 
         result = await session.execute(stmt)
-        return result.scalar_one()
+        saved_user_id = result.scalar_one()
+
+        settings_stmt = (
+            psql.insert(UserSettings)
+            .values(user_id=saved_user_id)
+            .on_conflict_do_nothing(index_elements=[UserSettings.user_id])
+        )
+        await session.execute(settings_stmt)
+        return saved_user_id

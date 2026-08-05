@@ -4,6 +4,7 @@ import { RouterView } from 'vue-router';
 import { onMounted, ref } from 'vue';
 
 import { authenticateTelegram } from '@/shared/api/auth';
+import { fetchAndStoreUserSettings } from '@/shared/settings/userSettings';
 import { useTelegramApp } from '@/shared/telegram/useTelegramApp';
 
 const { colorScheme, webApp } = useTelegramApp();
@@ -15,7 +16,13 @@ async function authorize() {
 
   try {
     const isAuthenticated = await authenticateTelegram(webApp.value?.initData ?? '');
-    authStatus.value = isAuthenticated ? 'authenticated' : 'failed';
+    if (!isAuthenticated) {
+      authStatus.value = 'failed';
+      return;
+    }
+
+    await fetchAndStoreUserSettings();
+    authStatus.value = 'authenticated';
   } catch {
     authStatus.value = 'failed';
   }
