@@ -42,6 +42,54 @@ input {
   padding: calc(16px + env(safe-area-inset-top)) 16px calc(18px + env(safe-area-inset-bottom));
 }
 
+.auth-state,
+.auth-error-backdrop {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.auth-state {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: var(--tg-theme-hint-color, #66717d);
+  font-weight: 700;
+}
+
+.auth-error-backdrop {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(23 33 43 / 0.35);
+}
+
+.auth-error {
+  display: grid;
+  gap: 16px;
+  width: min(100%, 420px);
+  padding: 24px;
+  border: 1px solid var(--tg-theme-section-separator-color, #d8e0e7);
+  border-radius: 16px;
+  background: var(--tg-theme-secondary-bg-color, #ffffff);
+  box-shadow: 0 18px 50px rgb(23 33 43 / 0.2);
+  text-align: center;
+}
+
+.auth-error h1,
+.auth-error p {
+  margin: 0;
+}
+
+.auth-error h1 {
+  color: #a83636;
+  font-size: 22px;
+}
+
+.auth-error p {
+  color: var(--tg-theme-hint-color, #66717d);
+  line-height: 1.5;
+}
+
 .screen {
   display: grid;
   gap: 18px;

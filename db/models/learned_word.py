@@ -25,6 +25,11 @@ class LearnedWord(Base):
         sa.ForeignKey('words_en.id', ondelete='CASCADE'),
         index=True,
     )
+    session_id: Mapped[str] = mapped_column(
+        sa.String(64),
+        nullable=False,
+        index=True,
+    )
     review_count: Mapped[int] = mapped_column(
         sa.Integer,
         default=0,

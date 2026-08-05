@@ -79,6 +79,7 @@ class VocabularyService:
     async def get_new_word_for_user(
         self,
         user_id: int,
+        session_id: str,
         payload: VocabularyWordsRequest,
     ) -> WordEn | None:
         learned_words_stmt = sa.select(LearnedWord.word_id).where(
@@ -93,7 +94,11 @@ class VocabularyService:
 
         stmt = (
             psql.insert(LearnedWord)
-            .values(user_id=user_id, word_id=word.id)
+            .values(
+                user_id=user_id,
+                word_id=word.id,
+                session_id=session_id,
+            )
             .on_conflict_do_nothing(
                 index_elements=[LearnedWord.user_id, LearnedWord.word_id],
             )

@@ -4,7 +4,7 @@ import { computed, onUnmounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 
 import WordInfoBlock from '@/features/practice/components/WordInfoBlock.vue';
-import { BACKEND_URL } from '@/shared/api/client';
+import { authorizedFetch, BACKEND_URL } from '@/shared/api/client';
 
 type Level = 'ANY' | 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
 type PracticeMode = 'learn' | 'repeat';
@@ -393,7 +393,7 @@ async function requestWord() {
   const targetState = nextMode === 'learn' ? learnState.value : repeatState.value;
 
   try {
-    const response = await fetch(url, {
+    const response = await authorizedFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -555,7 +555,7 @@ async function submitAnswer(targetState = currentState.value) {
 
     console.log('[practice-answer:request]', requestDebug);
 
-    const response = await fetch(url, requestInit);
+    const response = await authorizedFetch(url, requestInit);
     const contentType = response.headers.get('content-type') ?? '';
     const data = contentType.includes('application/json') ? await response.json() : await response.text();
 

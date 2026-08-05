@@ -88,6 +88,7 @@ async def learn_word(
     service = VocabularyService(session)
     word = await service.get_new_word_for_user(
         user_id=current_user.id,
+        session_id=current_user.session_id,
         payload=payload,
     )
     if word is None:
@@ -105,6 +106,7 @@ async def learn_word(
         await review_word.kiq(
             word_id=word.id,
             model=WordReviewRequest().model,
+            session_id=current_user.session_id,
         )
 
     return VocabularyWordsResponse(data=word)
@@ -133,6 +135,7 @@ async def request_word_review(
     await review_word.kiq(
         word_id=word.id,
         model=model.value,
+        session_id=current_user.session_id,
     )
 
     return WordReviewResponse(success=True)
@@ -212,6 +215,7 @@ async def answer_word(
             user_id=current_user.id,
             word_id=payload.word_id,
             is_correct=check_result.is_correct,
+            session_id=current_user.session_id,
         )
 
         total_duration_ms = (perf_counter() - total_started_at) * 1000
@@ -274,6 +278,7 @@ async def answer_word(
         user_id=current_user.id,
         word_id=payload.word_id,
         is_correct=check_result.is_correct,
+        session_id=current_user.session_id,
     )
 
     total_duration_ms = (perf_counter() - total_started_at) * 1000
@@ -342,12 +347,14 @@ async def _enqueue_word_repetition_record(
     user_id: int,
     word_id: int,
     is_correct: bool,
+    session_id: str,
 ) -> None:
     try:
         await record_word_repetition.kiq(
             user_id=user_id,
             word_id=word_id,
             is_correct=is_correct,
+            session_id=session_id,
         )
     except Exception:
         logger.exception(

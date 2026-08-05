@@ -1,15 +1,45 @@
 <script setup lang="ts">
+import Button from 'primevue/button';
 import { RouterView } from 'vue-router';
+import { onMounted, ref } from 'vue';
 
+import { authenticateTelegram } from '@/shared/api/auth';
 import { useTelegramApp } from '@/shared/telegram/useTelegramApp';
 
-const { colorScheme } = useTelegramApp();
+const { colorScheme, webApp } = useTelegramApp();
+
+const authStatus = ref<'loading' | 'authenticated' | 'failed'>('loading');
+
+async function authorize() {
+  authStatus.value = 'loading';
+
+  try {
+    const isAuthenticated = await authenticateTelegram(webApp.value?.initData ?? '');
+    authStatus.value = isAuthenticated ? 'authenticated' : 'failed';
+  } catch {
+    authStatus.value = 'failed';
+  }
+}
+
+onMounted(authorize);
 </script>
 
 <template>
   <div class="app-shell" :class="{ 'tg-dark': colorScheme === 'dark' }">
-    <main class="app-content">
+    <main v-if="authStatus === 'authenticated'" class="app-content">
       <RouterView />
     </main>
+
+    <div v-else-if="authStatus === 'loading'" class="auth-state" role="status">
+      Проверяем авторизацию…
+    </div>
+
+    <div v-else class="auth-error-backdrop">
+      <section class="auth-error" role="alertdialog" aria-modal="true" aria-labelledby="auth-error-title">
+        <h1 id="auth-error-title">Ошибка авторизации</h1>
+        <p>Не удалось подтвердить вход через Telegram. Откройте приложение из Telegram и попробуйте ещё раз.</p>
+        <Button label="Повторить" severity="danger" @click="authorize" />
+      </section>
+    </div>
   </div>
 </template>

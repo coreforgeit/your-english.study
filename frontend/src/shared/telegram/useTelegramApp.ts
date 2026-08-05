@@ -2,6 +2,7 @@ import { computed, onMounted, ref } from 'vue';
 
 type TelegramWebApp = {
   colorScheme?: 'light' | 'dark';
+  initData?: string;
   ready?: () => void;
   expand?: () => void;
 };
@@ -17,8 +18,9 @@ declare global {
 const webApp = ref<TelegramWebApp | null>(null);
 
 export function useTelegramApp() {
+  webApp.value = window.Telegram?.WebApp ?? null;
+
   onMounted(() => {
-    webApp.value = window.Telegram?.WebApp ?? null;
     webApp.value?.ready?.();
     webApp.value?.expand?.();
   });

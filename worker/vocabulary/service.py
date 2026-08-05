@@ -23,9 +23,16 @@ logger = logging.getLogger(__name__)
 
 
 class VocabularyReviewService:
-    def __init__(self, session: AsyncSession, model: TextModel) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        model: TextModel,
+        *,
+        session_id: str | None = None,
+    ) -> None:
         self.session = session
         self.model = model
+        self.session_id = session_id
         self._processed_words: set[tuple[str, str | None]] = set()
 
     async def review(self, word_id: int) -> WordEn:
@@ -45,6 +52,7 @@ class VocabularyReviewService:
             word=word.word,
             part_of_speech=word.part_of_speech,
             model=self.model,
+            session_id=self.session_id,
         )
 
         self._add_translations(word, review.translations)
@@ -129,6 +137,7 @@ class VocabularyReviewService:
             word=normalized_word,
             part_of_speech_hint=preferred_part_of_speech,
             model=self.model,
+            session_id=self.session_id,
         )
         logger.info(f'analysis:\n{analysis.translations}\n{analysis.level}\n{analysis.synonyms}')
         created_word = self._build_word(

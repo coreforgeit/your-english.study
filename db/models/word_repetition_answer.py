@@ -22,4 +22,9 @@ class WordRepetitionAnswer(Base):
     word_id: Mapped[int] = mapped_column(
         sa.ForeignKey('words_en.id', ondelete='CASCADE'),
     )
+    session_id: Mapped[str] = mapped_column(
+        sa.String(64),
+        nullable=False,
+        index=True,
+    )
     is_correct: Mapped[bool] = mapped_column(sa.Boolean)

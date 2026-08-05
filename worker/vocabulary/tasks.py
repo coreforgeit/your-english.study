@@ -18,6 +18,7 @@ async def record_word_repetition(
     user_id: int,
     word_id: int,
     is_correct: bool,
+    session_id: str,
 ) -> None:
     async with async_session_factory() as session:
         try:
@@ -48,6 +49,7 @@ async def record_word_repetition(
                     user_id=user_id,
                     word_id=word_id,
                     is_correct=is_correct,
+                    session_id=session_id,
                 ),
             )
             await session.flush()
@@ -96,7 +98,12 @@ async def record_word_repetition(
 
 
 @broker.task
-async def review_word(*, word_id: int, model: str) -> None:
+async def review_word(
+    *,
+    word_id: int,
+    model: str,
+    session_id: str | None = None,
+) -> None:
     text_model = TextModel(model)
     logger.info(
         'Задача проверки слова принята: word_id=%s model=%s',
@@ -106,7 +113,11 @@ async def review_word(*, word_id: int, model: str) -> None:
 
     async with async_session_factory() as session:
         try:
-            service = VocabularyReviewService(session, text_model)
+            service = VocabularyReviewService(
+                session,
+                text_model,
+                session_id=session_id,
+            )
             await service.review(word_id)
             await session.commit()
         except Exception:

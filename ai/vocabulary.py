@@ -18,6 +18,7 @@ async def review_vocabulary_word(
     word: str,
     part_of_speech: str | None,
     model: TextModel,
+    session_id: str | None = None,
 ) -> VocabularyReviewResult:
     return await _request_vocabulary_analysis(
         word=word,
@@ -25,6 +26,7 @@ async def review_vocabulary_word(
         model=model,
         prompt=VOCABULARY_REVIEW_PROMPT,
         result_type=VocabularyReviewResult,
+        session_id=session_id,
     )
 
 
@@ -33,6 +35,7 @@ async def analyze_new_vocabulary_word(
     word: str,
     part_of_speech_hint: str | None,
     model: TextModel,
+    session_id: str | None = None,
 ) -> VocabularyCreationResult:
     return await _request_vocabulary_analysis(
         word=word,
@@ -40,6 +43,7 @@ async def analyze_new_vocabulary_word(
         model=model,
         prompt=VOCABULARY_CREATION_PROMPT,
         result_type=VocabularyCreationResult,
+        session_id=session_id,
     )
 
 
@@ -50,6 +54,7 @@ async def _request_vocabulary_analysis(
     model: TextModel,
     prompt: str,
     result_type: type[VocabularyResult],
+    session_id: str | None,
 ) -> VocabularyResult:
     request_options: dict[str, Any] = {}
     if model.supports_reasoning:
@@ -85,6 +90,7 @@ async def _request_vocabulary_analysis(
         output_tokens=usage.output_tokens,
         reasoning_tokens=usage.output_tokens_details.reasoning_tokens,
         total_tokens=usage.total_tokens,
+        session_id=session_id,
     )
 
     if response.output_parsed is None:
