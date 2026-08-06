@@ -28,7 +28,7 @@ class UserSettingsTest(unittest.IsolatedAsyncioTestCase):
         settings_insert = session.execute.await_args_list[1].args[0]
         self.assertEqual(settings_insert.compile().params['user_id'], 42)
 
-    async def test_post_returns_empty_settings(self):
+    async def test_get_returns_user_settings(self):
         session = AsyncMock()
         session.scalar.return_value = UserSettings(user_id=42, timezone='UTC')
         current_user = CurrentTelegramUser(id=42, session_id='session')

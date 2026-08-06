@@ -1,6 +1,10 @@
 @import './palette.css';
 
 :root {
+  --app-content-top: 16px;
+  --app-content-bottom: 18px;
+  --bottom-navigation-height: 64px;
+
   color: var(--color-text);
   background: var(--color-background);
   font-family:
@@ -41,7 +45,61 @@ input {
 .app-content {
   width: min(100%, 720px);
   margin: 0 auto;
-  padding: calc(16px + env(safe-area-inset-top)) 16px calc(18px + env(safe-area-inset-bottom));
+  padding: calc(var(--app-content-top) + env(safe-area-inset-top)) 16px
+    calc(var(--app-content-bottom) + env(safe-area-inset-bottom));
+}
+
+.app-content-with-navigation {
+  padding-bottom: calc(
+    var(--app-content-bottom) + var(--bottom-navigation-height) + env(safe-area-inset-bottom)
+  );
+}
+
+.bottom-navigation {
+  position: fixed;
+  z-index: 30;
+  bottom: 0;
+  left: 50%;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: min(100%, 720px);
+  min-height: calc(var(--bottom-navigation-height) + env(safe-area-inset-bottom));
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: 0 -6px 18px var(--color-shadow-soft);
+  transform: translateX(-50%);
+}
+
+.bottom-navigation-item {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 4px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--color-transparent);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.bottom-navigation-item:not(:disabled):hover,
+.bottom-navigation-item:not(:disabled):focus,
+.bottom-navigation-item.active {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-text);
+}
+
+.bottom-navigation-item:disabled {
+  cursor: default;
+  opacity: 0.46;
 }
 
 .auth-state,
@@ -196,13 +254,40 @@ input {
 
 .home-layout {
   display: grid;
-  align-items: center;
-  min-height: calc(100vh - 34px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-  min-height: calc(100dvh - 34px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  grid-template-rows: auto 1fr;
+  gap: 16px;
+  min-height: calc(
+    100vh - var(--app-content-top) - var(--app-content-bottom) - var(--bottom-navigation-height) -
+      env(safe-area-inset-top) - env(safe-area-inset-bottom)
+  );
+  min-height: calc(
+    100dvh - var(--app-content-top) - var(--app-content-bottom) - var(--bottom-navigation-height) -
+      env(safe-area-inset-top) - env(safe-area-inset-bottom)
+  );
+}
+
+.home-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.settings-button {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: default;
+  opacity: 0.58;
 }
 
 .home-menu {
   display: grid;
+  align-self: center;
   gap: 12px;
 }
 
@@ -240,8 +325,14 @@ input {
   display: grid;
   grid-template-rows: auto minmax(280px, 1fr) auto;
   gap: 18px;
-  min-height: calc(100vh - 34px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-  min-height: calc(100dvh - 34px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  min-height: calc(
+    100vh - var(--app-content-top) - var(--app-content-bottom) - var(--bottom-navigation-height) -
+      env(safe-area-inset-top) - env(safe-area-inset-bottom)
+  );
+  min-height: calc(
+    100dvh - var(--app-content-top) - var(--app-content-bottom) - var(--bottom-navigation-height) -
+      env(safe-area-inset-top) - env(safe-area-inset-bottom)
+  );
 }
 
 .error-toast {
@@ -765,7 +856,7 @@ input {
 }
 
 @media (min-width: 760px) {
-  .app-content {
-    padding-top: 32px;
+  :root {
+    --app-content-top: 32px;
   }
 }

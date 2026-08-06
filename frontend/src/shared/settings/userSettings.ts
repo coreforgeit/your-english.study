@@ -19,7 +19,7 @@ export async function fetchAndStoreUserSettings(): Promise<UserSettings> {
   const response = await apiRequest(
     '/api/telegram-app/settings',
     userSettingsResponseSchema,
-    { method: 'POST' },
+    { method: 'GET' },
   );
   localStorage.setItem(USER_SETTINGS_STORAGE_KEY, JSON.stringify(response.data));
   return response.data;

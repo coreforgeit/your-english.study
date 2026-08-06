@@ -44,7 +44,7 @@ async def get_interval_repetitions(
     return VocabularyIntervalRepetitionsResponse(data=word_ids)
 
 
-@router.post('/words/reapit', response_model=VocabularyWordsResponse)
+@router.post('/words/repeat', response_model=VocabularyWordsResponse)
 async def repeat_word(
     payload: VocabularyWordsRequest,
     current_user: CurrentTelegramUser = Depends(get_current_telegram_user),

@@ -13,7 +13,7 @@ from api.services.user_settings import UserSettingsService
 router = APIRouter(prefix='/telegram-app/settings', tags=['user-settings'])
 
 
-@router.post('', response_model=UserSettingsResponse)
+@router.get('', response_model=UserSettingsResponse)
 async def get_user_settings(
     current_user: CurrentTelegramUser = Depends(get_current_telegram_user),
     session: AsyncSession = Depends(get_session),

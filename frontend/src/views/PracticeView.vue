@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Mic, Send } from '@lucide/vue';
-import { computed, onUnmounted, ref } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
 import WordInfoBlock from '@/features/practice/components/WordInfoBlock.vue';
@@ -78,6 +78,13 @@ const selectedLevel = ref<Level>('ANY');
 const direction = ref<PracticeDirection>('en-ru');
 const route = useRoute();
 const selectedMode = ref<PracticeMode>(route.query.mode === 'learn' ? 'learn' : 'repeat');
+
+watch(
+  () => route.query.mode,
+  (mode) => {
+    selectedMode.value = mode === 'learn' ? 'learn' : 'repeat';
+  },
+);
 const isLoading = ref(false);
 const isSendingAnswer = ref(false);
 const isRecording = ref(false);
@@ -375,7 +382,7 @@ function selectMode(mode: PracticeMode) {
 }
 
 async function requestWord() {
-  const wordModePath = selectedMode.value === 'learn' ? 'learn' : 'reapit';
+  const wordModePath = selectedMode.value === 'learn' ? 'learn' : 'repeat';
   const url = `${BACKEND_URL}/api/telegram-app/words/${wordModePath}`;
   const body = getRequestBody();
   const requestDebug = {
