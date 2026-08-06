@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BookOpen, RotateCcw, Settings } from '@lucide/vue';
+import { BookOpen, Languages, MessageCircle, RotateCcw, Settings } from '@lucide/vue';
 </script>
 
 <template>
@@ -20,6 +20,16 @@ import { BookOpen, RotateCcw, Settings } from '@lucide/vue';
         <RotateCcw :size="28" />
         <span>Повторять</span>
       </RouterLink>
+
+      <button class="home-menu-button home-menu-translate" type="button" disabled aria-label="Перевод — скоро">
+        <Languages :size="28" />
+        <span>Перевод</span>
+      </button>
+
+      <button class="home-menu-button home-menu-conversation" type="button" disabled aria-label="Разговор — скоро">
+        <MessageCircle :size="28" />
+        <span>Разговор</span>
+      </button>
     </div>
   </section>
 </template>

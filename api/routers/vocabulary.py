@@ -160,6 +160,40 @@ async def answer_word(
 
     service = VocabularyService(session)
 
+    if payload.skip:
+        correct_answer = await service.get_correct_answer(
+            word_id=payload.word_id,
+            answer_language=payload.answer_language,
+        )
+        if correct_answer is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail='Word not found',
+            )
+
+        await _enqueue_word_repetition_record(
+            user_id=current_user.id,
+            word_id=payload.word_id,
+            is_correct=False,
+            session_id=current_user.session_id,
+        )
+
+        logger.info(
+            'Answer skipped: user_id=%s word_id=%s answer_language=%s',
+            current_user.id,
+            payload.word_id,
+            payload.answer_language,
+        )
+        return VocabularyWordAnswerResponse(
+            data=VocabularyWordAnswerData(
+                success=True,
+                answer='',
+                correct_answer=correct_answer,
+                is_correct=False,
+                skip=True,
+            ),
+        )
+
     if payload.answer_type == AnswerType.AUDIO:
         if audio_file is None:
             raise HTTPException(
@@ -320,6 +354,7 @@ async def _parse_answer_request(
             'answer_type': form.get('answer_type'),
             'answer_language': form.get('answer_language'),
             'answer': form.get('answer'),
+            'skip': form.get('skip', False),
         }
     else:
         raw_payload = await request.json()

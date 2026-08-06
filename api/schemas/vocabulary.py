@@ -32,6 +32,7 @@ class VocabularyWordAnswerRequest(BaseModel):
     answer_type: AnswerType
     answer_language: AnswerLanguage
     answer: str | None = None
+    skip: bool = False
 
 
 class AnswerTypo(BaseModel):
@@ -46,6 +47,7 @@ class VocabularyWordAnswerData(BaseModel):
     answer: str
     correct_answer: str | None = None
     is_correct: bool | None = None
+    skip: bool = False
     has_typo: bool = False
     typo: AnswerTypo | None = None
 

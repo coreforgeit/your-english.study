@@ -2,7 +2,9 @@
 import { Mic, Send } from '@lucide/vue';
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
+import { z } from 'zod';
 
+import AudioWaveform from '@/features/practice/components/AudioWaveform.vue';
 import WordInfoBlock from '@/features/practice/components/WordInfoBlock.vue';
 import { authorizedFetch, BACKEND_URL } from '@/shared/api/client';
 
@@ -53,11 +55,51 @@ type PracticeState = {
   answerSubmitted: boolean;
   answerText: string;
   answerStatus: AnswerStatus;
+  answerSkipped: boolean;
   answerTypo: AnswerTypo | null;
   submittedAnswer: string;
   correctAnswer: string;
   recordedAudio: Blob | null;
 };
+
+const wordDataStorageSchema = z.object({
+  id: z.number().nullable(),
+  word: z.string(),
+  pronunciation: z.string().nullable(),
+  translation: z.string(),
+  translations: z.array(z.string()),
+  partOfSpeech: z.string().nullable(),
+  audioUrl: z.string().nullable(),
+  level: z.string().nullable(),
+});
+
+const answerTypoStorageSchema = z.object({
+  index: z.number(),
+  type: z.enum(['replace', 'missing', 'extra']),
+  expected: z.string().nullable(),
+  actual: z.string().nullable(),
+});
+
+const learnSessionWordSchema = z.object({
+  word: wordDataStorageSchema,
+  displayDirection: z.enum(['ru-en', 'en-ru']),
+});
+
+const repeatSessionStateSchema = z.object({
+  word: wordDataStorageSchema,
+  displayDirection: z.enum(['ru-en', 'en-ru']),
+  showAnswer: z.boolean(),
+  answerSubmitted: z.boolean(),
+  answerText: z.string(),
+  answerStatus: z.enum(['correct', 'incorrect']).nullable(),
+  answerSkipped: z.boolean().default(false),
+  answerTypo: answerTypoStorageSchema.nullable(),
+  submittedAnswer: z.string(),
+  correctAnswer: z.string(),
+});
+
+const LEARN_SESSION_WORD_STORAGE_KEY = 'practice:last-learn-word';
+const REPEAT_SESSION_STATE_STORAGE_KEY = 'practice:last-repeat-state';
 
 function createPracticeState(displayDirection: DisplayDirection): PracticeState {
   return {
@@ -67,6 +109,7 @@ function createPracticeState(displayDirection: DisplayDirection): PracticeState 
     answerSubmitted: false,
     answerText: '',
     answerStatus: null,
+    answerSkipped: false,
     answerTypo: null,
     submittedAnswer: '',
     correctAnswer: '',
@@ -78,13 +121,6 @@ const selectedLevel = ref<Level>('ANY');
 const direction = ref<PracticeDirection>('en-ru');
 const route = useRoute();
 const selectedMode = ref<PracticeMode>(route.query.mode === 'learn' ? 'learn' : 'repeat');
-
-watch(
-  () => route.query.mode,
-  (mode) => {
-    selectedMode.value = mode === 'learn' ? 'learn' : 'repeat';
-  },
-);
 const isLoading = ref(false);
 const isSendingAnswer = ref(false);
 const isRecording = ref(false);
@@ -99,6 +135,102 @@ const recordingAnalyser = ref<AnalyserNode | null>(null);
 const voiceDetectionFrame = ref<number | null>(null);
 const repeatState = ref<PracticeState>(createPracticeState('en-ru'));
 const learnState = ref<PracticeState>(createPracticeState('en-ru'));
+const showLearnStartDialog = ref(false);
+const showRepeatStartDialog = ref(false);
+
+function restoreLearnSessionWord() {
+  try {
+    const storedValue = sessionStorage.getItem(LEARN_SESSION_WORD_STORAGE_KEY);
+    if (!storedValue) {
+      return false;
+    }
+
+    const storedWord = learnSessionWordSchema.parse(JSON.parse(storedValue));
+    learnState.value.word = storedWord.word;
+    learnState.value.displayDirection = storedWord.displayDirection;
+    learnState.value.answerSubmitted = true;
+    return true;
+  } catch {
+    sessionStorage.removeItem(LEARN_SESSION_WORD_STORAGE_KEY);
+    return false;
+  }
+}
+
+function saveLearnSessionWord(word: WordData, displayDirection: DisplayDirection) {
+  try {
+    sessionStorage.setItem(
+      LEARN_SESSION_WORD_STORAGE_KEY,
+      JSON.stringify({ word, displayDirection }),
+    );
+  } catch {
+    // The current word remains available in memory if browser storage is unavailable.
+  }
+}
+
+function restoreRepeatSessionState() {
+  try {
+    const storedValue = sessionStorage.getItem(REPEAT_SESSION_STATE_STORAGE_KEY);
+    if (!storedValue) {
+      return false;
+    }
+
+    const storedState = repeatSessionStateSchema.parse(JSON.parse(storedValue));
+    repeatState.value = {
+      ...storedState,
+      recordedAudio: null,
+    };
+    return true;
+  } catch {
+    sessionStorage.removeItem(REPEAT_SESSION_STATE_STORAGE_KEY);
+    return false;
+  }
+}
+
+function saveRepeatSessionState(state: PracticeState) {
+  if (!state.word) {
+    return;
+  }
+
+  try {
+    sessionStorage.setItem(
+      REPEAT_SESSION_STATE_STORAGE_KEY,
+      JSON.stringify({
+        word: state.word,
+        displayDirection: state.displayDirection,
+        showAnswer: state.showAnswer,
+        answerSubmitted: state.answerSubmitted,
+        answerText: state.answerText,
+        answerStatus: state.answerStatus,
+        answerSkipped: state.answerSkipped,
+        answerTypo: state.answerTypo,
+        submittedAnswer: state.submittedAnswer,
+        correctAnswer: state.correctAnswer,
+      }),
+    );
+  } catch {
+    // The current state remains available in memory if browser storage is unavailable.
+  }
+}
+
+restoreLearnSessionWord();
+restoreRepeatSessionState();
+showLearnStartDialog.value = selectedMode.value === 'learn' && !learnState.value.word;
+showRepeatStartDialog.value = selectedMode.value === 'repeat' && !repeatState.value.word;
+
+watch(
+  () => route.query.mode,
+  (mode) => {
+    selectedMode.value = mode === 'learn' ? 'learn' : 'repeat';
+    showLearnStartDialog.value = selectedMode.value === 'learn' && !learnState.value.word;
+    showRepeatStartDialog.value = selectedMode.value === 'repeat' && !repeatState.value.word;
+  },
+);
+
+watch(
+  repeatState,
+  (state) => saveRepeatSessionState(state),
+  { deep: true },
+);
 
 const voiceSilenceThreshold = 0.025;
 const voiceSilenceMsToStop = 1200;
@@ -154,7 +286,7 @@ const answerLanguage = computed(() => (currentState.value.displayDirection === '
 const answerRequestLanguage = computed(() => (currentState.value.displayDirection === 'en-ru' ? 'ru' : 'en'));
 const isLearnMode = computed(() => selectedMode.value === 'learn');
 const hasCurrentWord = computed(() => currentWord.value !== null);
-const isAnswerInputDisabled = computed(
+const isMicrophoneDisabled = computed(
   () =>
     !hasCurrentWord.value ||
     isLearnMode.value ||
@@ -162,8 +294,8 @@ const isAnswerInputDisabled = computed(
     isSendingAnswer.value ||
     isLoading.value,
 );
+const isAnswerInputDisabled = computed(() => isMicrophoneDisabled.value || isRecording.value);
 const arePracticeSettingsDisabled = computed(() => false);
-const areModeButtonsDisabled = computed(() => false);
 const nextButtonText = computed(() => {
   if (isLoading.value) {
     return 'Загрузка...';
@@ -180,10 +312,19 @@ const submittedAnswerParts = computed(() =>
 );
 const displayedCorrectAnswer = computed(() => currentState.value.correctAnswer || answerBlock.value.text);
 const correctAnswerParts = computed(() => buildAnswerParts(displayedCorrectAnswer.value, currentState.value.answerTypo, 'correct'));
+const skippedCorrectAnswers = computed(() =>
+  displayedCorrectAnswer.value
+    .split(/[,;/]+/)
+    .map((answer) => answer.trim())
+    .filter(Boolean),
+);
+const skippedAnswersStyle = computed(() => ({
+  '--skip-answer-count': String(Math.max(skippedCorrectAnswers.value.length, 1)),
+}));
 
 function getRequestBody() {
   return {
-    level: selectedLevel.value === 'ANY' ? null : selectedLevel.value,
+    level: isLearnMode.value && selectedLevel.value !== 'ANY' ? selectedLevel.value : null,
   };
 }
 
@@ -377,8 +518,14 @@ function changeDisplayDirection(value: PracticeDirection) {
   chooseDisplayDirection(value);
 }
 
-function selectMode(mode: PracticeMode) {
-  selectedMode.value = mode;
+async function startLearning() {
+  showLearnStartDialog.value = false;
+  await requestWord();
+}
+
+async function startRepeating() {
+  showRepeatStartDialog.value = false;
+  await requestWord();
 }
 
 async function requestWord() {
@@ -435,12 +582,17 @@ async function requestWord() {
     targetState.displayDirection = nextDisplayDirection;
     targetState.showAnswer = false;
     targetState.answerStatus = null;
+    targetState.answerSkipped = false;
     targetState.answerTypo = null;
     targetState.submittedAnswer = '';
     targetState.correctAnswer = '';
     targetState.answerText = '';
     targetState.recordedAudio = null;
     targetState.answerSubmitted = nextMode === 'learn';
+
+    if (nextMode === 'learn') {
+      saveLearnSessionWord(targetState.word, nextDisplayDirection);
+    }
   } catch (error) {
     requestError.value = error instanceof Error ? error.message : 'Не удалось выполнить запрос';
     showError(requestError.value);
@@ -468,6 +620,17 @@ function getAnswerResult(data: unknown): AnswerStatus {
   return null;
 }
 
+function getAnswerSkipped(data: unknown) {
+  const responseData = getResponseData(data);
+
+  return Boolean(
+    responseData &&
+      typeof responseData === 'object' &&
+      'skip' in responseData &&
+      responseData.skip === true
+  );
+}
+
 function getSubmittedAnswerFromResponse(data: unknown, fallback: string) {
   const responseData = getResponseData(data);
 
@@ -493,11 +656,15 @@ function getCorrectAnswerFromResponse(data: unknown, fallback: string) {
   return fallback;
 }
 
-async function submitAnswer(targetState = currentState.value) {
+async function submitAnswer(
+  targetState = currentState.value,
+  options?: { skip?: boolean },
+) {
   const url = `${BACKEND_URL}/api/telegram-app/words/answer`;
   const wordId = targetState.word?.id;
   const textAnswer = targetState.answerText.trim();
   const hasAudio = targetState.recordedAudio !== null;
+  const skip = options?.skip === true;
   const targetAnswerLanguage = getAnswerLanguage(targetState.displayDirection);
 
   answerError.value = null;
@@ -509,7 +676,7 @@ async function submitAnswer(targetState = currentState.value) {
     return;
   }
 
-  if (!textAnswer && !hasAudio) {
+  if (!skip && !textAnswer && !hasAudio) {
     answerError.value = 'Введите ответ или запишите голос';
     showError(answerError.value);
     return;
@@ -526,12 +693,26 @@ async function submitAnswer(targetState = currentState.value) {
       url,
     };
 
-    if (targetState.recordedAudio) {
+    if (skip) {
+      const body = {
+        word_id: wordId,
+        answer_type: 'text',
+        answer_language: targetAnswerLanguage,
+        skip: true,
+      };
+
+      requestInit.headers = {
+        'Content-Type': 'application/json',
+      };
+      requestInit.body = JSON.stringify(body);
+      requestDebug.body = body;
+    } else if (targetState.recordedAudio) {
       const formData = new FormData();
 
       formData.append('word_id', String(wordId));
       formData.append('answer_type', 'audio');
       formData.append('answer_language', targetAnswerLanguage);
+      formData.append('skip', 'false');
       formData.append('audio_file', targetState.recordedAudio, 'answer.webm');
 
       requestInit.body = formData;
@@ -539,6 +720,7 @@ async function submitAnswer(targetState = currentState.value) {
         word_id: wordId,
         answer_type: 'audio',
         answer_language: targetAnswerLanguage,
+        skip: false,
         audio_file: {
           name: 'answer.webm',
           size: targetState.recordedAudio.size,
@@ -551,6 +733,7 @@ async function submitAnswer(targetState = currentState.value) {
         answer_type: 'text',
         answer_language: targetAnswerLanguage,
         answer: textAnswer,
+        skip: false,
       };
 
       requestInit.headers = {
@@ -575,8 +758,9 @@ async function submitAnswer(targetState = currentState.value) {
     }
 
     targetState.answerStatus = getAnswerResult(data);
+    targetState.answerSkipped = getAnswerSkipped(data);
     targetState.answerTypo = getAnswerTypo(data);
-    targetState.submittedAnswer = getSubmittedAnswerFromResponse(data, textAnswer);
+    targetState.submittedAnswer = getSubmittedAnswerFromResponse(data, skip ? '' : textAnswer);
     targetState.correctAnswer = getCorrectAnswerFromResponse(data, answerBlock.value.text);
     targetState.answerText = '';
     targetState.recordedAudio = null;
@@ -593,6 +777,17 @@ async function submitAnswer(targetState = currentState.value) {
 
 async function submitCurrentAnswer() {
   await submitAnswer();
+}
+
+async function handleNextButton() {
+  const targetState = currentState.value;
+
+  if (!isLearnMode.value && targetState.word && !targetState.answerSubmitted) {
+    await submitAnswer(targetState, { skip: true });
+    return;
+  }
+
+  await requestWord();
 }
 
 function setRecordingStreamEnabled(enabled: boolean) {
@@ -733,10 +928,10 @@ async function startRecording() {
       }
     };
     recorder.start();
-    isRecording.value = true;
     voiceDetected = false;
     silenceStartedAt = null;
     recordingStartedAt = performance.now();
+    isRecording.value = true;
     startVoiceDetection(targetState);
     console.log('[practice-answer:voice]', 'recording-started');
   } catch (error) {
@@ -762,7 +957,43 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="practice-layout" aria-label="Тренировка слов">
+  <section
+    class="practice-layout"
+    :class="{ 'practice-layout-without-header': !isLearnMode }"
+    aria-label="Тренировка слов"
+  >
+    <div v-if="showLearnStartDialog" class="practice-start-backdrop">
+      <section
+        class="practice-start-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="learn-start-title"
+        aria-describedby="learn-start-description"
+      >
+        <h2 id="learn-start-title">Начнём учить?</h2>
+        <p id="learn-start-description">Новые слова будут сохранены в ваш словарь.</p>
+        <button type="button" class="practice-start-button" @click="startLearning">
+          Выучить новое слово
+        </button>
+      </section>
+    </div>
+
+    <div v-if="showRepeatStartDialog" class="practice-start-backdrop">
+      <section
+        class="practice-start-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="repeat-start-title"
+        aria-describedby="repeat-start-description"
+      >
+        <h2 id="repeat-start-title">Пора повторить?</h2>
+        <p id="repeat-start-description">Повторение помогает закрепить слова в памяти.</p>
+        <button type="button" class="practice-start-button" @click="startRepeating">
+          Начать повторение
+        </button>
+      </section>
+    </div>
+
     <div v-if="errorMessage" class="error-toast" role="alert">
       <span>{{ errorMessage }}</span>
       <button type="button" class="error-toast-close" aria-label="Закрыть ошибку" @click="clearError">
@@ -770,7 +1001,7 @@ onUnmounted(() => {
       </button>
     </div>
 
-    <header class="practice-top">
+    <header v-if="isLearnMode" class="practice-top">
       <div class="level-grid" aria-label="Выбор уровня">
         <div v-for="(row, rowIndex) in levelRows" :key="rowIndex" class="level-row">
           <button
@@ -797,6 +1028,7 @@ onUnmounted(() => {
     >
       <section v-if="hasCurrentWord" class="learn-word-card">
         <p class="word-language">ENG</p>
+        <span v-if="currentWord?.level" class="word-level">{{ currentWord.level }}</span>
         <WordInfoBlock :item="englishBlock" tone="english" />
         <div class="learn-translation">
           <span>RU</span>
@@ -818,8 +1050,12 @@ onUnmounted(() => {
           <p class="word-language">{{ answerLanguage }}</p>
           <template v-if="currentState.showAnswer">
             <div class="answer-result">
-              <div class="answer-comparison">
-                <p class="answer-line answer-line-submitted">
+              <div
+                class="answer-comparison"
+                :class="{ 'answer-comparison-skipped': currentState.answerSkipped }"
+                :style="currentState.answerSkipped ? skippedAnswersStyle : undefined"
+              >
+                <p v-if="!currentState.answerSkipped" class="answer-line answer-line-submitted">
                   <span
                     v-for="part in submittedAnswerParts"
                     :key="part.key"
@@ -829,7 +1065,20 @@ onUnmounted(() => {
                     {{ part.value }}
                   </span>
                 </p>
-                <p class="answer-line answer-line-correct" :class="`answer-line-${currentState.answerStatus ?? 'neutral'}`">
+                <template v-if="currentState.answerSkipped">
+                  <p
+                    v-for="(answer, index) in skippedCorrectAnswers"
+                    :key="`${answer}-${index}`"
+                    class="answer-line answer-line-correct answer-line-skipped"
+                  >
+                    {{ answer }}
+                  </p>
+                </template>
+                <p
+                  v-else
+                  class="answer-line answer-line-correct"
+                  :class="`answer-line-${currentState.answerStatus ?? 'neutral'}`"
+                >
                   <span
                     v-for="part in correctAnswerParts"
                     :key="part.key"
@@ -848,6 +1097,11 @@ onUnmounted(() => {
 
     <footer class="practice-actions">
       <form v-if="!isLearnMode" class="answer-input-panel" @submit.prevent="submitCurrentAnswer">
+        <AudioWaveform
+          v-if="isRecording && recordingAnalyser"
+          :analyser="recordingAnalyser"
+          :is-recording="isRecording"
+        />
         <input
           v-model="currentState.answerText"
           class="answer-input"
@@ -868,7 +1122,7 @@ onUnmounted(() => {
           type="button"
           class="answer-icon-button microphone-button"
           :class="{ active: isRecording }"
-          :disabled="isAnswerInputDisabled"
+          :disabled="isMicrophoneDisabled"
           aria-label="Записать голосом"
           @click="toggleRecording"
         >
@@ -877,7 +1131,12 @@ onUnmounted(() => {
       </form>
 
       <div class="word-actions">
-        <button type="button" class="next-button" :disabled="isLoading" @click="requestWord">
+        <button
+          type="button"
+          class="next-button"
+          :disabled="isLoading || isSendingAnswer || isRecording"
+          @click="handleNextButton"
+        >
           {{ nextButtonText }}
         </button>
       </div>
@@ -896,26 +1155,6 @@ onUnmounted(() => {
         </button>
       </div>
 
-      <div class="primary-actions">
-        <button
-          type="button"
-          class="action-button action-repeat"
-          :class="{ active: selectedMode === 'repeat' }"
-          :disabled="areModeButtonsDisabled"
-          @click="selectMode('repeat')"
-        >
-          Повторять
-        </button>
-        <button
-          type="button"
-          class="action-button action-new"
-          :class="{ active: selectedMode === 'learn' }"
-          :disabled="areModeButtonsDisabled"
-          @click="selectMode('learn')"
-        >
-          Учить новое
-        </button>
-      </div>
     </footer>
   </section>
 </template>

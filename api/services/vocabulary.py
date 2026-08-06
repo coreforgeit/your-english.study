@@ -151,6 +151,24 @@ class VocabularyService:
         )
         return check_result
 
+    async def get_correct_answer(
+        self,
+        word_id: int,
+        answer_language: AnswerLanguage,
+    ) -> str | None:
+        word = await self.session.get(
+            WordEn,
+            word_id,
+            options=(selectinload(WordEn.translations),),
+        )
+        if word is None:
+            return None
+
+        if answer_language == AnswerLanguage.EN:
+            return word.word
+
+        return word.translation
+
     async def save_answer_error(
         self,
         *,
