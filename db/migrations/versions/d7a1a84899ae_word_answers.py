@@ -24,6 +24,7 @@ def upgrade() -> None:
     sa.Column('id', sa.BigInteger(), nullable=False),
     sa.Column('user_id', sa.BigInteger(), nullable=False),
     sa.Column('word_id', sa.BigInteger(), nullable=False),
+    sa.Column('session_id', sa.String(length=64), nullable=False),
     sa.Column('is_correct', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
@@ -31,6 +32,7 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['word_id'], ['words_en.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_index(op.f('ix_word_repetition_answers_session_id'), 'word_repetition_answers', ['session_id'], unique=False)
     op.create_index('ix_word_repetition_answers_user_word_correct_created', 'word_repetition_answers', ['user_id', 'word_id', 'is_correct', 'created_at'], unique=False)
     op.add_column('learned_words', sa.Column('review_count', sa.Integer(), server_default='0', nullable=False))
     op.add_column('learned_words', sa.Column('status', sa.Enum('new', 'learned', name='learned_word_status', native_enum=False, create_constraint=True), server_default='new', nullable=False))
@@ -44,5 +46,6 @@ def downgrade() -> None:
     op.drop_column('learned_words', 'status')
     op.drop_column('learned_words', 'review_count')
     op.drop_index('ix_word_repetition_answers_user_word_correct_created', table_name='word_repetition_answers')
+    op.drop_index(op.f('ix_word_repetition_answers_session_id'), table_name='word_repetition_answers')
     op.drop_table('word_repetition_answers')
     # ### end Alembic commands ###

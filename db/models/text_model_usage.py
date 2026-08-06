@@ -10,7 +10,6 @@ from enums import AIRequestInitiator, AIRequestScenario
 class TextModelUsage(Base):
     __tablename__ = 'text_model_usages'
 
-    session_id: Mapped[str | None] = mapped_column(sa.String(64), index=True)
     model: Mapped[str] = mapped_column(sa.String(100))
     initiator: Mapped[AIRequestInitiator] = mapped_column(
         sa.Enum(

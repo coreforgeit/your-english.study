@@ -153,7 +153,7 @@ def _normalize_row(row: dict[str, str | None]) -> dict[str, object]:
         'country': country_map.get(_clean(row.get('country')), 'both'),
         'level': _nullable(row.get('level')),
         'audio_url': _nullable(row.get('audio_url')),
-        'source': 'default',
+        'source': 'base',
     }
 
 

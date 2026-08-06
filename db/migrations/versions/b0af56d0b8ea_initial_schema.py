@@ -72,6 +72,7 @@ def upgrade() -> None:
     sa.Column('id', sa.BigInteger(), nullable=False),
     sa.Column('user_id', sa.BigInteger(), nullable=False),
     sa.Column('word_id', sa.BigInteger(), nullable=False),
+    sa.Column('session_id', sa.String(length=64), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
@@ -81,6 +82,7 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_learned_words_user_id'), 'learned_words', ['user_id'], unique=False)
     op.create_index(op.f('ix_learned_words_word_id'), 'learned_words', ['word_id'], unique=False)
+    op.create_index(op.f('ix_learned_words_session_id'), 'learned_words', ['session_id'], unique=False)
     op.create_table('words_ru',
     sa.Column('id', sa.BigInteger(), nullable=False),
     sa.Column('word_en_id', sa.BigInteger(), nullable=False),
@@ -101,6 +103,7 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_words_ru_word_en_id'), table_name='words_ru')
     op.drop_index(op.f('ix_words_ru_word'), table_name='words_ru')
     op.drop_table('words_ru')
+    op.drop_index(op.f('ix_learned_words_session_id'), table_name='learned_words')
     op.drop_index(op.f('ix_learned_words_word_id'), table_name='learned_words')
     op.drop_index(op.f('ix_learned_words_user_id'), table_name='learned_words')
     op.drop_table('learned_words')

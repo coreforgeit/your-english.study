@@ -21,7 +21,6 @@ async def save_text_model_usage(
     output_tokens: int,
     reasoning_tokens: int,
     total_tokens: int,
-    session_id: str | None = None,
 ) -> None:
     text_model = TextModel(model)
     cost_usd = calculate_text_request_cost(
@@ -35,7 +34,6 @@ async def save_text_model_usage(
         try:
             session.add(
                 TextModelUsage(
-                    session_id=session_id,
                     model=text_model.value,
                     initiator=AIRequestInitiator(initiator),
                     scenario=AIRequestScenario(scenario),

@@ -90,7 +90,6 @@ async def _request_vocabulary_analysis(
         output_tokens=usage.output_tokens,
         reasoning_tokens=usage.output_tokens_details.reasoning_tokens,
         total_tokens=usage.total_tokens,
-        session_id=session_id,
     )
 
     if response.output_parsed is None:
