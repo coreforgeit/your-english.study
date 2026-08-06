@@ -1,0 +1,32 @@
+:root {
+  --color-transparent: transparent;
+
+  --color-text: var(--tg-theme-text-color, #17212b);
+  --color-text-muted: var(--tg-theme-hint-color, #66717d);
+  --color-background: #eef3f7;
+  --color-surface: var(--tg-theme-secondary-bg-color, #ffffff);
+  --color-border: var(--tg-theme-section-separator-color, #d8e0e7);
+  --color-accent: var(--tg-theme-button-color, #2481cc);
+
+  --color-primary-text: #2164aa;
+  --color-primary-soft: #2c8bff29;
+  --color-primary-strong: #2c8bff47;
+
+  --color-success-text: #257a4b;
+  --color-success-soft: #2dbe7029;
+  --color-success-strong: #2dbe7047;
+
+  --color-danger-text: #a83636;
+  --color-danger-soft: #ff5c5c29;
+  --color-danger-strong: #ff5c5c47;
+  --color-danger-border: #a8363652;
+
+  --color-neutral-text: #43505c;
+  --color-neutral-soft: #77859429;
+
+  --color-surface-translucent: #ffffffcc;
+
+  --color-backdrop: #17212b59;
+  --color-shadow-soft: #17212b24;
+  --color-shadow-strong: #17212b33;
+}
