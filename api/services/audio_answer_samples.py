@@ -67,3 +67,4 @@ class AudioAnswerSampleService:
     def _safe_filename_part(value: str) -> str:
         cleaned = re.sub(r'[^\w-]+', '_', value.strip().lower(), flags=re.UNICODE).strip('_')
         return (cleaned or 'empty_transcription')[:80]
+
