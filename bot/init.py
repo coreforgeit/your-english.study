@@ -7,16 +7,13 @@ from db.session import async_session_factory
 
 
 def create_bot() -> Bot:
-    if settings.debug:
-        if not settings.bot_token_test:
-            raise RuntimeError('BOT_TOKEN is not configured')
+    token_name = 'BOT_TOKEN_TEST' if settings.debug else 'BOT_TOKEN'
+    token = settings.bot_token_test if settings.debug else settings.bot_token
 
-        return Bot(token=settings.bot_token_test)
-    else:
-        if not settings.bot_token:
-            raise RuntimeError('BOT_TOKEN is not configured')
+    if not token:
+        raise RuntimeError(f'{token_name} is not configured')
 
-        return Bot(token=settings.bot_token)
+    return Bot(token=token)
 
 
 def create_dispatcher() -> Dispatcher:
