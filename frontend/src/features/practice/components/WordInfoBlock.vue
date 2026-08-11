@@ -2,6 +2,9 @@
 import { Volume2 } from '@lucide/vue';
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
+const AUDIO_UNAVAILABLE_MESSAGE = 'Аудиофайл недоступен';
+const AUDIO_WARNING_DURATION_MS = 2000;
+
 type WordInfo = {
   text: string;
   pronunciation?: string | null;
@@ -19,7 +22,47 @@ const wordMainElement = ref<HTMLElement | null>(null);
 const wordTextElement = ref<HTMLElement | null>(null);
 const wordScale = ref(1);
 const wordWidth = ref('auto');
+const isAudioUnavailable = ref(false);
+const showAudioWarning = ref(false);
 let resizeObserver: ResizeObserver | null = null;
+let activeAudio: HTMLAudioElement | null = null;
+let audioRequestId = 0;
+let audioWarningTimeout: ReturnType<typeof setTimeout> | null = null;
+
+function clearAudioWarningTimeout() {
+  if (audioWarningTimeout === null) {
+    return;
+  }
+
+  clearTimeout(audioWarningTimeout);
+  audioWarningTimeout = null;
+}
+
+function hideAudioWarning() {
+  clearAudioWarningTimeout();
+  showAudioWarning.value = false;
+}
+
+function showUnavailableAudioWarning() {
+  clearAudioWarningTimeout();
+  showAudioWarning.value = true;
+  audioWarningTimeout = setTimeout(() => {
+    showAudioWarning.value = false;
+    audioWarningTimeout = null;
+  }, AUDIO_WARNING_DURATION_MS);
+}
+
+function stopActiveAudio() {
+  audioRequestId += 1;
+  activeAudio?.pause();
+  activeAudio = null;
+}
+
+function resetAudioState() {
+  stopActiveAudio();
+  hideAudioWarning();
+  isAudioUnavailable.value = false;
+}
 
 function fitWordToContainer() {
   const mainElement = wordMainElement.value;
@@ -50,11 +93,44 @@ function fitWordToContainer() {
 }
 
 function playAudio() {
-  if (!props.item.audioUrl) {
+  if (!props.item.audioUrl || isAudioUnavailable.value) {
     return;
   }
 
-  new Audio(props.item.audioUrl).play();
+  stopActiveAudio();
+
+  const audio = new Audio(props.item.audioUrl);
+  const requestId = audioRequestId;
+  let errorReported = false;
+  activeAudio = audio;
+
+  const reportAudioError = () => {
+    if (errorReported || requestId !== audioRequestId) {
+      return;
+    }
+
+    errorReported = true;
+    activeAudio = null;
+    isAudioUnavailable.value = true;
+    showUnavailableAudioWarning();
+  };
+
+  audio.addEventListener('error', reportAudioError, { once: true });
+  audio.addEventListener(
+    'ended',
+    () => {
+      if (activeAudio === audio) {
+        activeAudio = null;
+      }
+    },
+    { once: true },
+  );
+
+  try {
+    void audio.play().catch(reportAudioError);
+  } catch {
+    reportAudioError();
+  }
 }
 
 onMounted(() => {
@@ -69,6 +145,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   resizeObserver?.disconnect();
+  stopActiveAudio();
+  clearAudioWarningTimeout();
 });
 
 watch(
@@ -77,6 +155,8 @@ watch(
     void nextTick(fitWordToContainer);
   },
 );
+
+watch(() => props.item.audioUrl, resetAudioState);
 </script>
 
 <template>
@@ -87,15 +167,20 @@ watch(
           {{ item.text }}
         </strong>
       </span>
-      <button
-        v-if="item.audioUrl"
-        type="button"
-        class="audio-button"
-        aria-label="Воспроизвести звук"
-        @click="playAudio"
-      >
-        <Volume2 :size="21" />
-      </button>
+      <div v-if="item.audioUrl" class="audio-control">
+        <button
+          type="button"
+          class="audio-button"
+          :disabled="isAudioUnavailable"
+          :aria-label="isAudioUnavailable ? AUDIO_UNAVAILABLE_MESSAGE : 'Воспроизвести произношение'"
+          @click="playAudio"
+        >
+          <Volume2 :size="21" />
+        </button>
+        <div v-if="showAudioWarning" class="audio-unavailable-warning" role="alert">
+          {{ AUDIO_UNAVAILABLE_MESSAGE }}
+        </div>
+      </div>
     </div>
 
     <div v-if="item.pronunciation || item.partOfSpeech" class="word-info-details">

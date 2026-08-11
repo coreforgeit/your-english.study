@@ -707,10 +707,14 @@ input {
   font-weight: 700;
 }
 
+.audio-control {
+  position: relative;
+  flex: 0 0 42px;
+}
+
 .audio-button {
   display: grid;
   place-items: center;
-  flex: 0 0 42px;
   width: 42px;
   height: 42px;
   border: 2px solid var(--color-transparent);
@@ -720,9 +724,48 @@ input {
   cursor: pointer;
 }
 
-.audio-button:hover,
-.audio-button:focus {
+.audio-button:hover:not(:disabled),
+.audio-button:focus-visible:not(:disabled) {
   border-color: var(--color-accent);
+}
+
+.audio-button:disabled {
+  background: var(--color-neutral-soft);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.audio-unavailable-warning {
+  position: absolute;
+  z-index: 5;
+  right: 0;
+  bottom: calc(100% + 8px);
+  width: max-content;
+  max-width: min(240px, calc(100vw - 32px));
+  padding: 8px 10px;
+  border: 1px solid var(--color-danger-border);
+  border-radius: 9px;
+  background: var(--color-surface);
+  box-shadow: 0 8px 20px var(--color-shadow-soft);
+  color: var(--color-danger-text);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.audio-unavailable-warning::before {
+  position: absolute;
+  right: 14px;
+  top: 100%;
+  width: 8px;
+  height: 8px;
+  border-right: 1px solid var(--color-danger-border);
+  border-bottom: 1px solid var(--color-danger-border);
+  background: var(--color-surface);
+  content: '';
+  transform: translateY(-4px) rotate(45deg);
 }
 
 .answer-placeholder {
