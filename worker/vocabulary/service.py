@@ -11,6 +11,7 @@ from ai.schemas import (
 )
 from ai.vocabulary import analyze_new_vocabulary_word, review_vocabulary_word
 from db.models import (
+    LanguageLevel,
     WordEn,
     WordEnSynonym,
     WordRu,
@@ -56,7 +57,9 @@ class VocabularyReviewService:
         )
 
         self._add_translations(word, review.translations)
-        word.level = review.level
+        language_level = await self._get_language_level(review.level)
+        word.level = language_level.name
+        word.language_level = language_level
         word.is_reviewed = True
         word.status = self._status_from_review(review)
         await self.session.flush()
@@ -140,9 +143,11 @@ class VocabularyReviewService:
             session_id=self.session_id,
         )
         logger.info(f'analysis:\n{analysis.translations}\n{analysis.level}\n{analysis.synonyms}')
+        language_level = await self._get_language_level(analysis.level)
         created_word = self._build_word(
             word=normalized_word,
             analysis=analysis,
+            language_level=language_level,
             part_of_speech=(
                 preferred_part_of_speech or analysis.part_of_speech
             ),
@@ -183,6 +188,16 @@ class VocabularyReviewService:
         if word is None:
             raise LookupError(f'Слово {word_id} не найдено')
         return word
+
+    async def _get_language_level(self, name: str) -> LanguageLevel:
+        normalized_name = name.strip().upper()
+        language_level = await self.session.scalar(
+            select(LanguageLevel).where(LanguageLevel.name == normalized_name),
+        )
+        if language_level is None:
+            raise LookupError(f'Уровень языка {normalized_name!r} не найден')
+
+        return language_level
 
     async def _find_word(
         self,
@@ -236,6 +251,7 @@ class VocabularyReviewService:
         *,
         word: str,
         analysis: VocabularyCreationResult,
+        language_level: LanguageLevel,
         part_of_speech: str,
         pronunciation: str | None,
         audio_url: str | None,
@@ -244,7 +260,8 @@ class VocabularyReviewService:
             word=word,
             pronunciation=pronunciation,
             part_of_speech=part_of_speech.strip().casefold(),
-            level=analysis.level,
+            level=language_level.name,
+            language_level=language_level,
             audio_url=audio_url,
             source=WordSource.GPT,
             is_reviewed=True,

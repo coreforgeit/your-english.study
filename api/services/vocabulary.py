@@ -7,9 +7,9 @@ from sqlalchemy.dialects import postgresql as psql
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from api.schemas.vocabulary import VocabularyWordsRequest
+from api.schemas.vocabulary import VocabularyRepeatWordRequest, VocabularyWordsRequest
 from core.config import settings
-from db.models import LearnedWord, WordEn, WordEnSynonym
+from db.models import LanguageLevel, LearnedWord, WordEn, WordEnSynonym
 from enums import AnswerLanguage, LearnedWordStatus, WordStatus
 
 
@@ -31,12 +31,15 @@ class VocabularyService:
     async def get_learned_word_for_user(
         self,
         user_id: int,
-        payload: VocabularyWordsRequest,
+        payload: VocabularyRepeatWordRequest,
     ) -> WordEn | None:
         stmt = (
             sa.select(WordEn)
             .join(LearnedWord, LearnedWord.word_id == WordEn.id)
-            .options(selectinload(WordEn.translations))
+            .options(
+                selectinload(WordEn.language_level),
+                selectinload(WordEn.translations),
+            )
             .where(
                 LearnedWord.user_id == user_id,
                 WordEn.status == WordStatus.ALLOWED,
@@ -47,29 +50,38 @@ class VocabularyService:
             )
             .limit(1)
         )
-        if payload.level is not None:
-            stmt = stmt.where(WordEn.level == payload.level)
+        if payload.word_id is not None:
+            stmt = stmt.where(WordEn.id == payload.word_id)
+        elif payload.level is not None:
+            stmt = stmt.join(WordEn.language_level).where(
+                LanguageLevel.name == _normalize_level(payload.level),
+            )
 
         return await self.session.scalar(stmt)
 
     async def get_interval_repetition_word_ids(self, user_id: int) -> list[int]:
         created_date = sa.cast(LearnedWord.created_at, sa.Date)
         last_reviewed_date = sa.cast(LearnedWord.last_reviewed_at, sa.Date)
-        repetition_dates = [
-            sa.func.current_date() - interval
+        repetition_conditions = [
+            sa.and_(
+                created_date + interval <= sa.func.current_date(),
+                sa.or_(
+                    LearnedWord.last_reviewed_at.is_(None),
+                    last_reviewed_date < created_date + interval,
+                ),
+            )
             for interval in settings.vocabulary_repetition_intervals
         ]
+
+        if not repetition_conditions:
+            return []
 
         stmt = (
             sa.select(LearnedWord.word_id)
             .where(
                 LearnedWord.user_id == user_id,
                 LearnedWord.status == LearnedWordStatus.NEW,
-                created_date.in_(repetition_dates),
-                sa.or_(
-                    LearnedWord.last_reviewed_at.is_(None),
-                    last_reviewed_date < sa.func.current_date(),
-                ),
+                sa.or_(*repetition_conditions),
             )
             .order_by(LearnedWord.created_at, LearnedWord.id)
         )
@@ -324,12 +336,17 @@ class VocabularyService:
     ) -> WordEn | None:
         stmt = (
             sa.select(WordEn)
-            .options(selectinload(WordEn.translations))
+            .options(
+                selectinload(WordEn.language_level),
+                selectinload(WordEn.translations),
+            )
             .where(WordEn.status == WordStatus.ALLOWED)
         )
         logger.info(f'payload: {payload}')
         if payload.level is not None:
-            stmt = stmt.where(WordEn.level == payload.level)
+            stmt = stmt.join(WordEn.language_level).where(
+                LanguageLevel.name == _normalize_level(payload.level),
+            )
 
         if extra_filters:
             stmt = stmt.where(*extra_filters)
@@ -395,3 +412,7 @@ class VocabularyService:
             is_correct=False,
             correct_answer=word.translation,
         )
+
+
+def _normalize_level(level: str) -> str:
+    return level.strip().upper()

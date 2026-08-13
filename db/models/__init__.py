@@ -1,4 +1,5 @@
 from db.models.answer_error import AnswerError
+from db.models.language_level import LanguageLevel
 from db.models.learned_word import LearnedWord
 from db.models.text_model_usage import TextModelUsage
 from db.models.user import User
@@ -13,6 +14,7 @@ __all__ = (
     'UserSettings',
     'LearnedWord',
     'AnswerError',
+    'LanguageLevel',
     'WordEn',
     'WordEnSynonym',
     'WordRepetitionAnswer',

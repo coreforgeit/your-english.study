@@ -29,6 +29,10 @@ class WordEn(Base):
         server_default=WordCountry.BOTH,
     )
     level: Mapped[str | None] = mapped_column(sa.String(50))
+    level_id: Mapped[int | None] = mapped_column(
+        sa.ForeignKey('language_levels.id', ondelete='RESTRICT'),
+        index=True,
+    )
     audio_url: Mapped[str | None] = mapped_column(sa.String(500))
     audio_file_name: Mapped[str | None] = mapped_column(sa.String(255))
     audio_tg_id: Mapped[str | None] = mapped_column(sa.String(255))
@@ -61,6 +65,9 @@ class WordEn(Base):
     )
 
 
+    language_level: Mapped['LanguageLevel | None'] = relationship(
+        back_populates='words',
+    )
     translations: Mapped[list['WordRu']] = relationship(
         back_populates='word_en',
         cascade='all, delete-orphan',

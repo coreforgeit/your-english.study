@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import AudioWaveform from '@/features/practice/components/AudioWaveform.vue';
 import WordInfoBlock from '@/features/practice/components/WordInfoBlock.vue';
+import { useIntervalRepetitionQueue } from '@/features/practice/useIntervalRepetitionQueue';
 import { authorizedFetch, BACKEND_URL } from '@/shared/api/client';
 
 type Level = 'ANY' | 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
@@ -137,6 +138,7 @@ const repeatState = ref<PracticeState>(createPracticeState('en-ru'));
 const learnState = ref<PracticeState>(createPracticeState('en-ru'));
 const showLearnStartDialog = ref(false);
 const showRepeatStartDialog = ref(false);
+const intervalRepetitionQueue = useIntervalRepetitionQueue();
 
 function restoreLearnSessionWord() {
   try {
@@ -217,12 +219,20 @@ restoreRepeatSessionState();
 showLearnStartDialog.value = selectedMode.value === 'learn' && !learnState.value.word;
 showRepeatStartDialog.value = selectedMode.value === 'repeat' && !repeatState.value.word;
 
+if (selectedMode.value === 'repeat') {
+  void loadIntervalRepetitions();
+}
+
 watch(
   () => route.query.mode,
   (mode) => {
     selectedMode.value = mode === 'learn' ? 'learn' : 'repeat';
     showLearnStartDialog.value = selectedMode.value === 'learn' && !learnState.value.word;
     showRepeatStartDialog.value = selectedMode.value === 'repeat' && !repeatState.value.word;
+
+    if (selectedMode.value === 'repeat') {
+      void loadIntervalRepetitions();
+    }
   },
 );
 
@@ -322,10 +332,16 @@ const skippedAnswersStyle = computed(() => ({
   '--skip-answer-count': String(Math.max(skippedCorrectAnswers.value.length, 1)),
 }));
 
-function getRequestBody() {
-  return {
-    level: isLearnMode.value && selectedLevel.value !== 'ANY' ? selectedLevel.value : null,
+function getRequestBody(mode: PracticeMode, intervalRepetitionWordId: number | null) {
+  const body: { level: Level | null; word_id?: number } = {
+    level: mode === 'learn' && selectedLevel.value !== 'ANY' ? selectedLevel.value : null,
   };
+
+  if (mode === 'repeat' && intervalRepetitionWordId !== null) {
+    body.word_id = intervalRepetitionWordId;
+  }
+
+  return body;
 }
 
 function resolveDisplayDirection(value: PracticeDirection): DisplayDirection {
@@ -510,6 +526,14 @@ function clearError() {
   errorMessage.value = null;
 }
 
+async function loadIntervalRepetitions() {
+  try {
+    await intervalRepetitionQueue.loadOnce();
+  } catch (error) {
+    console.error('[interval-repetitions:error]', error);
+  }
+}
+
 function chooseDisplayDirection(value: PracticeDirection) {
   direction.value = value;
 }
@@ -529,24 +553,29 @@ async function startRepeating() {
 }
 
 async function requestWord() {
-  const wordModePath = selectedMode.value === 'learn' ? 'learn' : 'repeat';
+  const nextMode = selectedMode.value;
+  const wordModePath = nextMode === 'learn' ? 'learn' : 'repeat';
   const url = `${BACKEND_URL}/api/telegram-app/words/${wordModePath}`;
-  const body = getRequestBody();
-  const requestDebug = {
-    method: 'POST',
-    url,
-    body,
-  };
-
-  console.log('[practice-word:request]', requestDebug);
   clearError();
   requestError.value = null;
   isLoading.value = true;
-  const nextMode = selectedMode.value;
   const nextDisplayDirection = resolveDisplayDirection(direction.value);
   const targetState = nextMode === 'learn' ? learnState.value : repeatState.value;
+  let intervalRepetitionWordId: number | null = null;
 
   try {
+    if (nextMode === 'repeat') {
+      await loadIntervalRepetitions();
+      intervalRepetitionWordId = intervalRepetitionQueue.getRandomWordId();
+    }
+
+    const body = getRequestBody(nextMode, intervalRepetitionWordId);
+    console.log('[practice-word:request]', {
+      method: 'POST',
+      url,
+      body,
+    });
+
     const response = await authorizedFetch(url, {
       method: 'POST',
       headers: {
@@ -592,6 +621,8 @@ async function requestWord() {
 
     if (nextMode === 'learn') {
       saveLearnSessionWord(targetState.word, nextDisplayDirection);
+    } else if (intervalRepetitionWordId !== null) {
+      intervalRepetitionQueue.removeWordId(intervalRepetitionWordId);
     }
   } catch (error) {
     requestError.value = error instanceof Error ? error.message : 'Не удалось выполнить запрос';

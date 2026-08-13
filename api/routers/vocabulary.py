@@ -12,6 +12,7 @@ from ai.transcriptions import AudioTranscriptionService
 from api.dependencies import CurrentTelegramUser, get_current_telegram_user, get_session
 from api.schemas.vocabulary import (
     VocabularyIntervalRepetitionsResponse,
+    VocabularyRepeatWordRequest,
     VocabularyWordAnswerData,
     VocabularyWordAnswerRequest,
     VocabularyWordAnswerResponse,
@@ -46,14 +47,15 @@ async def get_interval_repetitions(
 
 @router.post('/words/repeat', response_model=VocabularyWordsResponse)
 async def repeat_word(
-    payload: VocabularyWordsRequest,
+    payload: VocabularyRepeatWordRequest,
     current_user: CurrentTelegramUser = Depends(get_current_telegram_user),
     session: AsyncSession = Depends(get_session),
 ) -> VocabularyWordsResponse:
     logger.info(
-        'Repeat word request: user_id=%s level=%s',
+        'Repeat word request: user_id=%s level=%s word_id=%s',
         current_user.id,
         payload.level,
+        payload.word_id,
     )
     service = VocabularyService(session)
     word = await service.get_learned_word_for_user(
@@ -62,9 +64,11 @@ async def repeat_word(
     )
     if word is None:
         logger.info(
-            'Repeat word response failed: no learned word found user_id=%s level=%s',
+            'Repeat word response failed: no learned word found '
+            'user_id=%s level=%s word_id=%s',
             current_user.id,
             payload.level,
+            payload.word_id,
         )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

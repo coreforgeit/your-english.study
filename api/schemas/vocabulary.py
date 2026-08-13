@@ -7,6 +7,10 @@ class VocabularyWordsRequest(BaseModel):
     level: str | None = None
 
 
+class VocabularyRepeatWordRequest(VocabularyWordsRequest):
+    word_id: int | None = Field(default=None, gt=0)
+
+
 class WordRead(BaseModel):
     id: int
     word: str
