@@ -150,6 +150,146 @@ input {
   line-height: 1.5;
 }
 
+.settings-dialog-backdrop {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: var(--color-backdrop);
+}
+
+.settings-dialog {
+  display: grid;
+  gap: 16px;
+  width: min(100%, 420px);
+  max-height: calc(100dvh - 40px);
+  padding: 22px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+  box-shadow: 0 18px 50px var(--color-shadow-strong);
+}
+
+.settings-dialog h2,
+.settings-dialog p,
+.language-level-options {
+  margin: 0;
+}
+
+.settings-dialog h2 {
+  font-size: 22px;
+  text-align: center;
+}
+
+.settings-dialog-description,
+.settings-dialog-status {
+  color: var(--color-text-muted);
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.language-level-options {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+}
+
+.language-level-options legend {
+  width: 100%;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.language-level-option {
+  display: grid;
+  place-items: center;
+  min-width: 52px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 2px solid var(--color-transparent);
+  border-radius: 12px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary-text);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.language-level-option.active {
+  border-color: var(--color-accent);
+}
+
+.language-level-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.settings-dialog-field {
+  display: grid;
+  gap: 7px;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.settings-dialog-field input[type='text'] {
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-background);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.settings-dialog-toggle {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.settings-dialog-toggle input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--color-accent);
+}
+
+.settings-dialog-error {
+  color: var(--color-danger-text);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.settings-dialog-submit {
+  min-height: 48px;
+  border: 2px solid var(--color-transparent);
+  border-radius: 12px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary-text);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.settings-dialog-submit:not(:disabled):hover,
+.settings-dialog-submit:not(:disabled):focus {
+  border-color: var(--color-accent);
+}
+
+.settings-dialog-submit:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
 .screen {
   display: grid;
   gap: 18px;
