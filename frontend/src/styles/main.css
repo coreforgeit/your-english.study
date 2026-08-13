@@ -619,8 +619,11 @@ input {
 }
 
 .learn-translation strong {
+  width: 100%;
   max-width: 100%;
   overflow-wrap: anywhere;
+  word-break: normal;
+  white-space: normal;
   color: var(--color-success-text);
   font-size: clamp(24px, 9vw, 40px);
   line-height: 1.08;
@@ -672,21 +675,22 @@ input {
 
 .word-info-text-box {
   display: block;
+  flex: 0 1 auto;
+  width: auto;
   max-width: 100%;
   min-width: 0;
-  overflow: visible;
 }
 
 .word-info-text {
   display: block;
-  width: max-content;
-  max-width: none;
-  overflow: visible;
+  width: auto;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: normal;
   font-size: clamp(24px, 10vw, 44px);
   line-height: 1.04;
-  transform: scale(var(--word-scale, 1));
-  transform-origin: center;
-  white-space: nowrap;
+  text-align: center;
+  white-space: normal;
 }
 
 .word-info-details {
