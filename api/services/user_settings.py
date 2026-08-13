@@ -1,7 +1,8 @@
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
-from db.models import UserSettings
+from db.models import LanguageLevel, UserSettings
 
 
 class UserSettingsService:
@@ -11,6 +12,29 @@ class UserSettingsService:
     async def get_for_user(self, user_id: int) -> UserSettings | None:
         return await self.session.scalar(
             sa.select(UserSettings).where(UserSettings.user_id == user_id),
+        )
+
+    async def get_effective_language_level(
+        self,
+        user_id: int,
+    ) -> int | None:
+        system_level = aliased(LanguageLevel)
+        selected_level = aliased(LanguageLevel)
+
+        return await self.session.scalar(
+            sa.select(
+                sa.func.coalesce(system_level.grade, selected_level.grade),
+            )
+            .select_from(UserSettings)
+            .outerjoin(
+                system_level,
+                system_level.id == UserSettings.system_language_level_id,
+            )
+            .outerjoin(
+                selected_level,
+                selected_level.id == UserSettings.selected_language_level_id,
+            )
+            .where(UserSettings.user_id == user_id),
         )
 
     async def update_for_user(

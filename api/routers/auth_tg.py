@@ -1,7 +1,9 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, Response
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.dependencies import get_session
 from api.schemas.auth_tg import TelegramAuthRequest
 from api.services.session import (
     SESSION_COOKIE_NAME,
@@ -9,6 +11,7 @@ from api.services.session import (
     get_session_service,
 )
 from api.services.telegram_auth import get_telegram_user_id
+from api.services.user_settings import UserSettingsService
 from core.config import settings
 
 
@@ -24,6 +27,7 @@ async def auth_tg(
         Cookie(alias=SESSION_COOKIE_NAME),
     ] = None,
     sessions: SessionService = Depends(get_session_service),
+    session: AsyncSession = Depends(get_session),
 ) -> bool:
     if settings.debug:
         user_id = 524275902
@@ -33,12 +37,18 @@ async def auth_tg(
     if user_id is None:
         return False
 
-    session_user_id = None
+    session_data = None
     if session_id:
-        session_user_id = await sessions.get_user_id(session_id)
+        session_data = await sessions.get(session_id)
 
-    if session_user_id != user_id:
-        session_id = await sessions.create(user_id)
+    if session_data is None or session_data.user_id != user_id:
+        language_level = await UserSettingsService(
+            session,
+        ).get_effective_language_level(user_id)
+        session_id = await sessions.create(
+            user_id=user_id,
+            language_level=language_level,
+        )
 
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
