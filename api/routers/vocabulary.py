@@ -93,6 +93,7 @@ async def learn_word(
     word = await service.get_new_word_for_user(
         user_id=current_user.id,
         session_id=current_user.session_id,
+        language_level_grade=current_user.language_level,
         payload=payload,
     )
     if word is None:

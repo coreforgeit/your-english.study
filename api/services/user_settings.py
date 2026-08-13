@@ -14,6 +14,12 @@ class UserSettingsService:
             sa.select(UserSettings).where(UserSettings.user_id == user_id),
         )
 
+    async def get_language_levels(self) -> list[LanguageLevel]:
+        result = await self.session.scalars(
+            sa.select(LanguageLevel).order_by(LanguageLevel.grade),
+        )
+        return list(result.all())
+
     async def get_effective_language_level(
         self,
         user_id: int,

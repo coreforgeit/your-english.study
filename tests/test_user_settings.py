@@ -5,9 +5,13 @@ from unittest.mock import AsyncMock, Mock
 from pydantic import ValidationError
 
 from api.dependencies import CurrentTelegramUser
-from api.routers.user_settings import get_user_settings, update_user_settings
+from api.routers.user_settings import (
+    get_language_levels,
+    get_user_settings,
+    update_user_settings,
+)
 from api.schemas.user_settings import UserSettingsUpdate
-from db.models import User, UserSettings
+from db.models import LanguageLevel, User, UserSettings
 
 
 class UserSettingsTest(unittest.IsolatedAsyncioTestCase):
@@ -60,6 +64,33 @@ class UserSettingsTest(unittest.IsolatedAsyncioTestCase):
                 },
             },
         )
+
+    async def test_get_language_levels_returns_ordered_service_result(self):
+        session = AsyncMock()
+        scalars_result = Mock()
+        scalars_result.all.return_value = [
+            LanguageLevel(id=1, name='A1', grade=1),
+            LanguageLevel(id=2, name='A2', grade=2),
+        ]
+        session.scalars.return_value = scalars_result
+        current_user = CurrentTelegramUser(id=42, session_id='session')
+
+        response = await get_language_levels(current_user, session)
+
+        self.assertEqual(
+            response.model_dump(),
+            {
+                'data': [
+                    {'id': 1, 'name': 'A1', 'grade': 1},
+                    {'id': 2, 'name': 'A2', 'grade': 2},
+                ],
+            },
+        )
+        statement = session.scalars.await_args.args[0]
+        compiled_statement = str(
+            statement.compile(compile_kwargs={'literal_binds': True}),
+        )
+        self.assertIn('ORDER BY language_levels.grade', compiled_statement)
 
     async def test_patch_accepts_empty_partial_update(self):
         session = AsyncMock()

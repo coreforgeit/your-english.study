@@ -92,6 +92,7 @@ class VocabularyService:
         self,
         user_id: int,
         session_id: str,
+        language_level_grade: int | None,
         payload: VocabularyWordsRequest,
     ) -> WordEn | None:
         learned_words_stmt = sa.select(LearnedWord.word_id).where(
@@ -99,6 +100,7 @@ class VocabularyService:
         )
         word = await self._select_word(
             payload=payload,
+            language_level_grade=language_level_grade,
             extra_filters=[WordEn.id.not_in(learned_words_stmt)],
         )
         if word is None:
@@ -332,6 +334,7 @@ class VocabularyService:
     async def _select_word(
         self,
         payload: VocabularyWordsRequest,
+        language_level_grade: int | None = None,
         extra_filters: list[sa.ColumnElement[bool]] | None = None,
     ) -> WordEn | None:
         stmt = (
@@ -346,6 +349,11 @@ class VocabularyService:
         if payload.level is not None:
             stmt = stmt.join(WordEn.language_level).where(
                 LanguageLevel.name == _normalize_level(payload.level),
+            )
+        elif language_level_grade is not None:
+            maximum_grade = min(language_level_grade + 1, 6)
+            stmt = stmt.join(WordEn.language_level).where(
+                LanguageLevel.grade <= maximum_grade,
             )
 
         if extra_filters:

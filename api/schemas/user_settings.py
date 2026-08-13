@@ -5,6 +5,18 @@ from pydantic import BaseModel, ConfigDict, field_validator
 from enums import Timezone
 
 
+class LanguageLevelData(BaseModel):
+    id: int
+    name: str
+    grade: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LanguageLevelsResponse(BaseModel):
+    data: list[LanguageLevelData]
+
+
 class UserSettingsData(BaseModel):
     selected_language_level_id: int | None
     system_language_level_id: int | None

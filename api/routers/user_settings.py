@@ -3,6 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import CurrentTelegramUser, get_current_telegram_user, get_session
 from api.schemas.user_settings import (
+    LanguageLevelData,
+    LanguageLevelsResponse,
     UserSettingsData,
     UserSettingsResponse,
     UserSettingsUpdate,
@@ -11,6 +13,17 @@ from api.services.user_settings import UserSettingsService
 
 
 router = APIRouter(prefix='/telegram-app/settings', tags=['user-settings'])
+
+
+@router.get('/language-levels', response_model=LanguageLevelsResponse)
+async def get_language_levels(
+    current_user: CurrentTelegramUser = Depends(get_current_telegram_user),
+    session: AsyncSession = Depends(get_session),
+) -> LanguageLevelsResponse:
+    levels = await UserSettingsService(session).get_language_levels()
+    return LanguageLevelsResponse(
+        data=[LanguageLevelData.model_validate(level) for level in levels],
+    )
 
 
 @router.get('', response_model=UserSettingsResponse)
