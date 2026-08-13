@@ -4,7 +4,11 @@ import { apiRequest } from '@/shared/api/client';
 
 
 const userSettingsSchema = z.object({
-  timezone: z.string().min(1).max(64),
+  selected_language_level_id: z.number().int().nullable(),
+  system_language_level_id: z.number().int().nullable(),
+  reminders_enabled: z.boolean(),
+  timezone: z.string().min(1).max(64).nullable(),
+  reminder_time: z.string(),
 });
 
 const userSettingsResponseSchema = z.object({

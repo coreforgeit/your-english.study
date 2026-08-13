@@ -1,4 +1,5 @@
 from enums.ai import TextModel, TranscriptionModel
+from enums.user_settings import Timezone
 from enums.usage import AIRequestInitiator, AIRequestScenario
 from enums.vocabulary import (
     AnswerLanguage,
@@ -17,6 +18,7 @@ __all__ = (
     'AnswerType',
     'LearnedWordStatus',
     'TextModel',
+    'Timezone',
     'TranscriptionModel',
     'WordCountry',
     'WordSource',

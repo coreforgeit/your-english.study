@@ -1,34 +1,33 @@
-from typing import Annotated
+from datetime import time
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
-
-Timezone = Annotated[
-    str,
-    Field(
-        min_length=1,
-        max_length=64,
-        pattern=r'^[A-Za-z0-9._+-]+(?:/[A-Za-z0-9._+-]+)*$',
-    ),
-]
+from enums import Timezone
 
 
 class UserSettingsData(BaseModel):
-    timezone: Timezone
+    selected_language_level_id: int | None
+    system_language_level_id: int | None
+    reminders_enabled: bool
+    timezone: Timezone | None
+    reminder_time: time
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class UserSettingsUpdate(BaseModel):
+    selected_language_level_id: int | None = None
+    reminders_enabled: bool | None = None
     timezone: Timezone | None = None
+    reminder_time: time | None = None
 
     model_config = ConfigDict(extra='forbid')
 
-    @field_validator('timezone', mode='before')
+    @field_validator('reminders_enabled', 'reminder_time', mode='before')
     @classmethod
-    def timezone_must_not_be_null(cls, value: object) -> object:
+    def non_nullable_fields_must_not_be_null(cls, value: object) -> object:
         if value is None:
-            raise ValueError('timezone must not be null')
+            raise ValueError('field must not be null')
         return value
 
 

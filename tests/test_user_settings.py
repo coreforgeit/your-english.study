@@ -1,4 +1,5 @@
 import unittest
+from datetime import time
 from unittest.mock import AsyncMock, Mock
 
 from pydantic import ValidationError
@@ -10,6 +11,18 @@ from db.models import User, UserSettings
 
 
 class UserSettingsTest(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def make_settings(**values) -> UserSettings:
+        return UserSettings(
+            user_id=42,
+            selected_language_level_id=None,
+            system_language_level_id=None,
+            reminders_enabled=True,
+            timezone='UTC',
+            reminder_time=time(20, 0),
+            **values,
+        )
+
     async def test_user_creation_ensures_settings_exist(self):
         session = AsyncMock()
         user_result = Mock()
@@ -30,16 +43,27 @@ class UserSettingsTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_returns_user_settings(self):
         session = AsyncMock()
-        session.scalar.return_value = UserSettings(user_id=42, timezone='UTC')
+        session.scalar.return_value = self.make_settings()
         current_user = CurrentTelegramUser(id=42, session_id='session')
 
         response = await get_user_settings(current_user, session)
 
-        self.assertEqual(response.model_dump(), {'data': {'timezone': 'UTC'}})
+        self.assertEqual(
+            response.model_dump(mode='json'),
+            {
+                'data': {
+                    'selected_language_level_id': None,
+                    'system_language_level_id': None,
+                    'reminders_enabled': True,
+                    'timezone': 'UTC',
+                    'reminder_time': '20:00:00',
+                },
+            },
+        )
 
     async def test_patch_accepts_empty_partial_update(self):
         session = AsyncMock()
-        session.scalar.return_value = UserSettings(user_id=42, timezone='UTC')
+        session.scalar.return_value = self.make_settings()
         current_user = CurrentTelegramUser(id=42, session_id='session')
 
         response = await update_user_settings(
@@ -48,11 +72,11 @@ class UserSettingsTest(unittest.IsolatedAsyncioTestCase):
             session,
         )
 
-        self.assertEqual(response.model_dump(), {'data': {'timezone': 'UTC'}})
+        self.assertEqual(response.data.timezone, 'UTC')
 
     async def test_patch_updates_timezone(self):
         session = AsyncMock()
-        settings = UserSettings(user_id=42, timezone='UTC')
+        settings = self.make_settings()
         session.scalar.return_value = settings
         current_user = CurrentTelegramUser(id=42, session_id='session')
 
@@ -64,17 +88,26 @@ class UserSettingsTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(settings.timezone, 'Europe/Berlin')
         self.assertEqual(
-            response.model_dump(),
-            {'data': {'timezone': 'Europe/Berlin'}},
+            response.model_dump(mode='json')['data']['timezone'],
+            'Europe/Berlin',
         )
 
     def test_patch_rejects_unknown_settings(self):
         with self.assertRaises(ValidationError):
             UserSettingsUpdate.model_validate({'unknown': True})
 
-    def test_patch_rejects_null_timezone(self):
+    def test_patch_accepts_null_timezone(self):
+        payload = UserSettingsUpdate.model_validate({'timezone': None})
+
+        self.assertIsNone(payload.timezone)
+
+    def test_patch_rejects_invalid_timezone(self):
         with self.assertRaises(ValidationError):
-            UserSettingsUpdate.model_validate({'timezone': None})
+            UserSettingsUpdate.model_validate({'timezone': 'Europe/Unknown'})
+
+    def test_patch_rejects_null_reminders_enabled(self):
+        with self.assertRaises(ValidationError):
+            UserSettingsUpdate.model_validate({'reminders_enabled': None})
 
     def test_user_relation_is_one_to_one(self):
         self.assertFalse(User.settings.property.uselist)
