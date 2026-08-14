@@ -5,7 +5,7 @@ import { useRoute } from 'vue-router';
 import { z } from 'zod';
 
 import AudioWaveform from '@/features/practice/components/AudioWaveform.vue';
-import WordInfoBlock from '@/features/practice/components/WordInfoBlock.vue';
+import WordCard from '@/features/practice/components/WordCard.vue';
 import { useIntervalRepetitionQueue } from '@/features/practice/useIntervalRepetitionQueue';
 import { authorizedFetch, BACKEND_URL } from '@/shared/api/client';
 
@@ -328,10 +328,6 @@ const skippedCorrectAnswers = computed(() =>
     .map((answer) => answer.trim())
     .filter(Boolean),
 );
-const skippedAnswersStyle = computed(() => ({
-  '--skip-answer-count': String(Math.max(skippedCorrectAnswers.value.length, 1)),
-}));
-
 function getRequestBody(mode: PracticeMode, intervalRepetitionWordId: number | null) {
   const body: { level: Level | null; word_id?: number } = {
     level: mode === 'learn' && selectedLevel.value !== 'ANY' ? selectedLevel.value : null,
@@ -1057,73 +1053,50 @@ onUnmounted(() => {
       :class="{ 'word-stage-empty': !hasCurrentWord }"
       aria-live="polite"
     >
-      <section v-if="hasCurrentWord" class="learn-word-card">
-        <p class="word-language">ENG</p>
-        <span v-if="currentWord?.level" class="word-level">{{ currentWord.level }}</span>
-        <WordInfoBlock :item="englishBlock" tone="english" />
-        <div class="learn-translation">
-          <span>RU</span>
-          <strong>{{ currentWord?.translations.join(', ') }}</strong>
-        </div>
-      </section>
+      <WordCard
+        v-if="hasCurrentWord"
+        class="word-card-learn"
+        language="ENG"
+        :level="currentWord?.level"
+        :text="englishBlock.text"
+        :pronunciation="englishBlock.pronunciation"
+        :part-of-speech="englishBlock.partOfSpeech"
+        :audio-url="englishBlock.audioUrl"
+        :translation="currentWord?.translations.join(', ')"
+        translation-language="RU"
+        tone="english"
+      />
     </main>
 
     <main v-else class="word-stage" :class="{ 'word-stage-empty': !hasCurrentWord }" aria-live="polite">
-      <section class="word-stage-half word-stage-prompt">
-        <template v-if="hasCurrentWord">
-          <p class="word-language">{{ promptLanguage }}</p>
-          <WordInfoBlock :item="promptBlock" :tone="promptTone" />
-        </template>
-      </section>
+      <WordCard
+        class="word-stage-prompt"
+        :language="hasCurrentWord ? promptLanguage : null"
+        :level="hasCurrentWord ? currentWord?.level : null"
+        :text="hasCurrentWord ? promptBlock.text : null"
+        :part-of-speech="hasCurrentWord ? promptBlock.partOfSpeech : null"
+        :audio-url="hasCurrentWord ? promptBlock.audioUrl : null"
+        :tone="promptTone"
+      />
 
-      <section class="word-stage-half word-stage-answer">
-        <template v-if="hasCurrentWord">
-          <p class="word-language">{{ answerLanguage }}</p>
-          <template v-if="currentState.showAnswer">
-            <div class="answer-result">
-              <div
-                class="answer-comparison"
-                :class="{ 'answer-comparison-skipped': currentState.answerSkipped }"
-                :style="currentState.answerSkipped ? skippedAnswersStyle : undefined"
-              >
-                <p v-if="!currentState.answerSkipped" class="answer-line answer-line-submitted">
-                  <span
-                    v-for="part in submittedAnswerParts"
-                    :key="part.key"
-                    class="answer-char"
-                    :class="`answer-char-${part.state}`"
-                  >
-                    {{ part.value }}
-                  </span>
-                </p>
-                <template v-if="currentState.answerSkipped">
-                  <p
-                    v-for="(answer, index) in skippedCorrectAnswers"
-                    :key="`${answer}-${index}`"
-                    class="answer-line answer-line-correct answer-line-skipped"
-                  >
-                    {{ answer }}
-                  </p>
-                </template>
-                <p
-                  v-else
-                  class="answer-line answer-line-correct"
-                  :class="`answer-line-${currentState.answerStatus ?? 'neutral'}`"
-                >
-                  <span
-                    v-for="part in correctAnswerParts"
-                    :key="part.key"
-                    class="answer-char"
-                    :class="`answer-char-${part.state}`"
-                  >
-                    {{ part.value }}
-                  </span>
-                </p>
-              </div>
-            </div>
-          </template>
-        </template>
-      </section>
+      <WordCard
+        class="word-stage-answer"
+        :language="hasCurrentWord ? answerLanguage : null"
+        :text="hasCurrentWord && currentState.showAnswer ? displayedCorrectAnswer : null"
+        :text-lines="currentState.showAnswer && currentState.answerSkipped ? skippedCorrectAnswers : []"
+        :text-parts="currentState.showAnswer && !currentState.answerSkipped ? correctAnswerParts : []"
+        :submitted-parts="currentState.showAnswer && !currentState.answerSkipped ? submittedAnswerParts : []"
+        :pronunciation="
+          currentState.showAnswer && answerTone === 'english' ? currentWord?.pronunciation : null
+        "
+        :part-of-speech="
+          currentState.showAnswer && answerTone === 'english' ? currentWord?.partOfSpeech : null
+        "
+        :audio-url="currentState.showAnswer && answerTone === 'english' ? currentWord?.audioUrl : null"
+        :tone="answerTone"
+        :result="currentState.answerStatus"
+        :skipped="currentState.answerSkipped"
+      />
     </main>
 
     <footer class="practice-actions">
