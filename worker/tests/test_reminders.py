@@ -148,10 +148,15 @@ class ReminderSchedulingTest(unittest.IsolatedAsyncioTestCase):
 class ReminderExecutionTest(unittest.IsolatedAsyncioTestCase):
     @patch('worker.reminders.tasks.scheduler')
     @patch('worker.reminders.tasks.Bot')
+    @patch(
+        'worker.reminders.tasks._has_due_repetition_words',
+        new_callable=AsyncMock,
+    )
     @patch('worker.reminders.tasks._get_reminder_settings', new_callable=AsyncMock)
     async def test_rechecks_disabled_settings_before_sending(
         self,
         get_settings: AsyncMock,
+        has_due_words: AsyncMock,
         bot_class: MagicMock,
         scheduler: MagicMock,
     ) -> None:
@@ -167,13 +172,19 @@ class ReminderExecutionTest(unittest.IsolatedAsyncioTestCase):
         scheduler.remove_job.assert_called_once_with(
             ReminderKey.DAILY_WORD_LEARNING.for_user(42),
         )
+        has_due_words.assert_not_awaited()
         bot_class.assert_not_called()
 
     @patch('worker.reminders.tasks.Bot')
+    @patch(
+        'worker.reminders.tasks._has_due_repetition_words',
+        new_callable=AsyncMock,
+    )
     @patch('worker.reminders.tasks._get_reminder_settings', new_callable=AsyncMock)
     async def test_rechecks_settings_and_sends_production_message(
         self,
         get_settings: AsyncMock,
+        has_due_words: AsyncMock,
         bot_class: MagicMock,
     ) -> None:
         get_settings.return_value = ReminderSettingsSnapshot(
@@ -181,6 +192,7 @@ class ReminderExecutionTest(unittest.IsolatedAsyncioTestCase):
             reminder_time=time(20, 0),
             timezone='UTC',
         )
+        has_due_words.return_value = True
         bot = bot_class.return_value
         bot.__aenter__ = AsyncMock(return_value=bot)
         bot.__aexit__ = AsyncMock(return_value=False)
@@ -193,3 +205,27 @@ class ReminderExecutionTest(unittest.IsolatedAsyncioTestCase):
             chat_id=42,
             text='Напоминание тест',
         )
+
+    @patch('worker.reminders.tasks.Bot')
+    @patch(
+        'worker.reminders.tasks._has_due_repetition_words',
+        new_callable=AsyncMock,
+    )
+    @patch('worker.reminders.tasks._get_reminder_settings', new_callable=AsyncMock)
+    async def test_skips_message_when_no_words_are_due(
+        self,
+        get_settings: AsyncMock,
+        has_due_words: AsyncMock,
+        bot_class: MagicMock,
+    ) -> None:
+        get_settings.return_value = ReminderSettingsSnapshot(
+            reminders_enabled=True,
+            reminder_time=time(20, 0),
+            timezone='UTC',
+        )
+        has_due_words.return_value = False
+
+        await _send_daily_word_learning_reminder(user_id=42)
+
+        has_due_words.assert_awaited_once_with(42)
+        bot_class.assert_not_called()

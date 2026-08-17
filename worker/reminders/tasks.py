@@ -11,6 +11,7 @@ from core.config import settings as app_settings
 from db.models import UserSettings
 from db.session import async_session_factory
 from enums import ReminderKey
+from services import VocabularyRepetitionService
 from worker.broker import broker
 from worker.scheduler import register_scheduler_initializer, scheduler
 
@@ -96,6 +97,11 @@ def _remove_reminder_job(user_id: int) -> bool:
     return True
 
 
+async def _has_due_repetition_words(user_id: int) -> bool:
+    async with async_session_factory() as session:
+        return await VocabularyRepetitionService(session).has_due_words(user_id)
+
+
 async def _send_daily_word_learning_reminder(*, user_id: int) -> None:
     user_settings = await _get_reminder_settings(user_id)
     if user_settings is None:
@@ -110,6 +116,21 @@ async def _send_daily_word_learning_reminder(*, user_id: int) -> None:
         _remove_reminder_job(user_id)
         logger.info(
             f'Ежедневное напоминание отключено: user_id={user_id}',
+        )
+        return
+
+    try:
+        has_due_words = await _has_due_repetition_words(user_id)
+    except Exception:
+        logger.exception(
+            f'Не удалось проверить слова для повторения: user_id={user_id}',
+        )
+        raise
+
+    if not has_due_words:
+        logger.info(
+            f'Напоминание пропущено: нет слов для повторения, '
+            f'user_id={user_id}',
         )
         return
 

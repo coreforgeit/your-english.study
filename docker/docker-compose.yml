@@ -76,6 +76,7 @@ services:
       - ../core:/app/core
       - ../db:/app/db
       - ../enums:/app/enums
+      - ../services:/app/services
       - ../worker:/app/worker
       - ../temp:/app/temp
     depends_on:
@@ -100,6 +101,7 @@ services:
       - ../core:/app/core
       - ../db:/app/db
       - ../enums:/app/enums
+      - ../services:/app/services
     depends_on:
       db:
         condition: service_healthy

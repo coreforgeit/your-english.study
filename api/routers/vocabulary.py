@@ -25,6 +25,7 @@ from api.services.audio_answer_samples import AudioAnswerSampleService
 from api.services.vocabulary import VocabularyService
 from db.models import WordEn
 from enums import AnswerType, TextModel, WordStatus
+from services import VocabularyRepetitionService
 from worker.vocabulary.tasks import record_word_repetition, review_word
 
 
@@ -40,8 +41,8 @@ async def get_interval_repetitions(
     current_user: CurrentTelegramUser = Depends(get_current_telegram_user),
     session: AsyncSession = Depends(get_session),
 ) -> VocabularyIntervalRepetitionsResponse:
-    service = VocabularyService(session)
-    word_ids = await service.get_interval_repetition_word_ids(current_user.id)
+    service = VocabularyRepetitionService(session)
+    word_ids = await service.get_due_word_ids(current_user.id)
     return VocabularyIntervalRepetitionsResponse(data=word_ids)
 
 

@@ -8,9 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from api.schemas.vocabulary import VocabularyRepeatWordRequest
-from core.config import settings
 from db.models import LanguageLevel, LearnedWord, WordEn, WordEnSynonym
-from enums import AnswerLanguage, LearnedWordStatus, WordStatus
+from enums import AnswerLanguage, WordStatus
 
 
 logger = logging.getLogger(__name__)
@@ -54,35 +53,6 @@ class VocabularyService:
             stmt = stmt.where(WordEn.id == payload.word_id)
 
         return await self.session.scalar(stmt)
-
-    async def get_interval_repetition_word_ids(self, user_id: int) -> list[int]:
-        created_date = sa.cast(LearnedWord.created_at, sa.Date)
-        last_reviewed_date = sa.cast(LearnedWord.last_reviewed_at, sa.Date)
-        repetition_conditions = [
-            sa.and_(
-                created_date + interval <= sa.func.current_date(),
-                sa.or_(
-                    LearnedWord.last_reviewed_at.is_(None),
-                    last_reviewed_date < created_date + interval,
-                ),
-            )
-            for interval in settings.vocabulary_repetition_intervals
-        ]
-
-        if not repetition_conditions:
-            return []
-
-        stmt = (
-            sa.select(LearnedWord.word_id)
-            .where(
-                LearnedWord.user_id == user_id,
-                LearnedWord.status == LearnedWordStatus.NEW,
-                sa.or_(*repetition_conditions),
-            )
-            .order_by(LearnedWord.created_at, LearnedWord.id)
-        )
-        result = await self.session.scalars(stmt)
-        return list(result.all())
 
     async def get_new_word_for_user(
         self,
