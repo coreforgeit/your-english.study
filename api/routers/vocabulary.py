@@ -52,9 +52,8 @@ async def repeat_word(
     session: AsyncSession = Depends(get_session),
 ) -> VocabularyWordsResponse:
     logger.info(
-        'Repeat word request: user_id=%s level=%s word_id=%s',
+        'Repeat word request: user_id=%s word_id=%s',
         current_user.id,
-        payload.level,
         payload.word_id,
     )
     service = VocabularyService(session)
@@ -64,10 +63,8 @@ async def repeat_word(
     )
     if word is None:
         logger.info(
-            'Repeat word response failed: no learned word found '
-            'user_id=%s level=%s word_id=%s',
+            'Repeat word response failed: no learned word found user_id=%s word_id=%s',
             current_user.id,
-            payload.level,
             payload.word_id,
         )
         raise HTTPException(
@@ -84,24 +81,16 @@ async def learn_word(
     current_user: CurrentTelegramUser = Depends(get_current_telegram_user),
     session: AsyncSession = Depends(get_session),
 ) -> VocabularyWordsResponse:
-    logger.info(
-        'Learn word request: user_id=%s level=%s',
-        current_user.id,
-        payload.level,
-    )
+    logger.info('Learn word request: user_id=%s', current_user.id)
+    # logger.info(f'payload: {payload}')
     service = VocabularyService(session)
     word = await service.get_new_word_for_user(
         user_id=current_user.id,
         session_id=current_user.session_id,
         language_level_grade=current_user.language_level,
-        payload=payload,
     )
     if word is None:
-        logger.info(
-            'Learn word response failed: no new word found user_id=%s level=%s',
-            current_user.id,
-            payload.level,
-        )
+        logger.info('Learn word response failed: no new word found user_id=%s', current_user.id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail='Word not found',

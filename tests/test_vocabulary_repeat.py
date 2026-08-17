@@ -1,13 +1,13 @@
 import unittest
 from unittest.mock import AsyncMock
 
-from api.schemas.vocabulary import VocabularyWordsRequest
+from api.schemas.vocabulary import VocabularyRepeatWordRequest
 from api.services.vocabulary import VocabularyService
 
 
 class VocabularyRepeatTest(unittest.IsolatedAsyncioTestCase):
     def test_word_id_is_optional(self):
-        payload = VocabularyWordsRequest()
+        payload = VocabularyRepeatWordRequest()
 
         self.assertIsNone(payload.word_id)
 
@@ -18,7 +18,7 @@ class VocabularyRepeatTest(unittest.IsolatedAsyncioTestCase):
 
         await service.get_learned_word_for_user(
             user_id=42,
-            payload=VocabularyWordsRequest(word_id=17),
+            payload=VocabularyRepeatWordRequest(word_id=17),
         )
 
         statement = session.scalar.await_args.args[0]

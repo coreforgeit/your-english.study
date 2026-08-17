@@ -14,12 +14,14 @@ class VocabularyLearnTest(unittest.IsolatedAsyncioTestCase):
         session.execute.return_value = result
         return session
 
-    async def test_uses_one_grade_above_session_level_when_level_is_missing(self):
+    def test_request_does_not_define_level(self):
+        self.assertNotIn('level', VocabularyWordsRequest.model_fields)
+
+    async def test_uses_one_grade_above_session_level(self):
         session = self._session()
         service = VocabularyService(session)
 
         await service._select_word(
-            payload=VocabularyWordsRequest(),
             language_level_grade=2,
         )
 
@@ -34,7 +36,6 @@ class VocabularyLearnTest(unittest.IsolatedAsyncioTestCase):
         service = VocabularyService(session)
 
         await service._select_word(
-            payload=VocabularyWordsRequest(),
             language_level_grade=6,
         )
 
@@ -43,23 +44,6 @@ class VocabularyLearnTest(unittest.IsolatedAsyncioTestCase):
             statement.compile(compile_kwargs={'literal_binds': True}),
         )
         self.assertIn('language_levels.grade <= 6', compiled_statement)
-
-    async def test_explicit_level_has_priority_over_session_grade(self):
-        session = self._session()
-        service = VocabularyService(session)
-
-        await service._select_word(
-            payload=VocabularyWordsRequest(level='B1'),
-            language_level_grade=2,
-        )
-
-        statement = session.execute.await_args.args[0]
-        compiled_statement = str(
-            statement.compile(compile_kwargs={'literal_binds': True}),
-        )
-        self.assertIn("language_levels.name = 'B1'", compiled_statement)
-        self.assertNotIn('language_levels.grade <=', compiled_statement)
-
 
 if __name__ == '__main__':
     unittest.main()

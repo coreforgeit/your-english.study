@@ -9,7 +9,6 @@ import WordCard from '@/features/practice/components/WordCard.vue';
 import { useIntervalRepetitionQueue } from '@/features/practice/useIntervalRepetitionQueue';
 import { authorizedFetch, BACKEND_URL } from '@/shared/api/client';
 
-type Level = 'ANY' | 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
 type PracticeMode = 'learn' | 'repeat';
 type PracticeDirection = 'ru-en' | 'en-ru' | 'random';
 type DisplayDirection = Exclude<PracticeDirection, 'random'>;
@@ -120,7 +119,6 @@ function createPracticeState(displayDirection: DisplayDirection): PracticeState 
   };
 }
 
-const selectedLevel = ref<Level>('ANY');
 const direction = ref<PracticeDirection>('en-ru');
 const route = useRoute();
 const selectedMode = ref<PracticeMode>(route.query.mode === 'learn' ? 'learn' : 'repeat');
@@ -257,19 +255,6 @@ let voiceDetected = false;
 let silenceStartedAt: number | null = null;
 let recordingStartedAt = 0;
 
-const levelRows: Array<Array<{ value: Level; label: string; className: string; ariaLabel: string }>> = [
-  [
-    { value: 'ANY', label: 'A-C', className: 'level-any', ariaLabel: 'Любой уровень' },
-    { value: 'C1', label: 'C1', className: 'level-c1', ariaLabel: 'Уровень C1' },
-    { value: 'C2', label: 'C2', className: 'level-c2', ariaLabel: 'Уровень C2' },
-  ],
-  [
-    { value: 'A1', label: 'A1', className: 'level-a1', ariaLabel: 'Уровень A1' },
-    { value: 'A2', label: 'A2', className: 'level-a2', ariaLabel: 'Уровень A2' },
-    { value: 'B1', label: 'B1', className: 'level-b1', ariaLabel: 'Уровень B1' },
-    { value: 'B2', label: 'B2', className: 'level-b2', ariaLabel: 'Уровень B2' },
-  ],
-];
 const directions: Array<{ value: PracticeDirection; label: string; className: string }> = [
   { value: 'ru-en', label: 'RU -> ENG', className: 'direction-ru-en' },
   { value: 'en-ru', label: 'ENG -> RU', className: 'direction-en-ru' },
@@ -312,7 +297,6 @@ const isMicrophoneDisabled = computed(
     isLoading.value,
 );
 const isAnswerInputDisabled = computed(() => isMicrophoneDisabled.value || isRecording.value);
-const arePracticeSettingsDisabled = computed(() => false);
 const nextButtonText = computed(() => {
   if (isLoading.value) {
     return 'Загрузка...';
@@ -336,9 +320,7 @@ const skippedCorrectAnswers = computed(() =>
     .filter(Boolean),
 );
 function getRequestBody(mode: PracticeMode, intervalRepetitionWordId: number | null) {
-  const body: { level: Level | null; word_id?: number } = {
-    level: mode === 'learn' && selectedLevel.value !== 'ANY' ? selectedLevel.value : null,
-  };
+  const body: { word_id?: number } = {};
 
   if (mode === 'repeat' && intervalRepetitionWordId !== null) {
     body.word_id = intervalRepetitionWordId;
@@ -514,11 +496,7 @@ function getBackendErrorMessage(data: unknown, fallback: string) {
 }
 
 function getWordNotFoundMessage() {
-  if (selectedLevel.value === 'ANY') {
-    return 'У нас сложности с поиском слова для вас, попробуйте позже';
-  }
-
-  return `Кажется, вы выучили все слова уровня ${selectedLevel.value}`;
+  return 'У нас сложности с поиском слова для вас, попробуйте позже';
 }
 
 function showError(message: string) {
@@ -1088,7 +1066,6 @@ onUnmounted(() => {
 <template>
   <section
     class="practice-layout"
-    :class="{ 'practice-layout-without-header': !isLearnMode }"
     aria-label="Тренировка слов"
   >
     <div v-if="showLearnStartDialog" class="practice-start-backdrop">
@@ -1153,25 +1130,6 @@ onUnmounted(() => {
         Я понял
       </button>
     </div>
-
-    <header v-if="isLearnMode" class="practice-top">
-      <div class="level-grid" aria-label="Выбор уровня">
-        <div v-for="(row, rowIndex) in levelRows" :key="rowIndex" class="level-row">
-          <button
-            v-for="level in row"
-            :key="level.value"
-            type="button"
-            class="level-button"
-            :class="[level.className, { active: selectedLevel === level.value }]"
-            :aria-label="level.ariaLabel"
-            :disabled="arePracticeSettingsDisabled"
-            @click="selectedLevel = level.value"
-          >
-            {{ level.label }}
-          </button>
-        </div>
-      </div>
-    </header>
 
     <main
       v-if="isLearnMode"
@@ -1278,7 +1236,6 @@ onUnmounted(() => {
           type="button"
           class="direction-button"
           :class="[item.className, { active: direction === item.value }]"
-          :disabled="arePracticeSettingsDisabled"
           @click="changeDisplayDirection(item.value)"
         >
           {{ item.label }}

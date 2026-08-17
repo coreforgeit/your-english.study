@@ -4,7 +4,7 @@ from enums import AnswerLanguage, AnswerType, TextModel
 
 
 class VocabularyWordsRequest(BaseModel):
-    level: str | None = None
+    pass
 
 
 class VocabularyRepeatWordRequest(VocabularyWordsRequest):

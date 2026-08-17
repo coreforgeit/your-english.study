@@ -7,7 +7,7 @@ from sqlalchemy.dialects import postgresql as psql
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from api.schemas.vocabulary import VocabularyRepeatWordRequest, VocabularyWordsRequest
+from api.schemas.vocabulary import VocabularyRepeatWordRequest
 from core.config import settings
 from db.models import LanguageLevel, LearnedWord, WordEn, WordEnSynonym
 from enums import AnswerLanguage, LearnedWordStatus, WordStatus
@@ -52,10 +52,6 @@ class VocabularyService:
         )
         if payload.word_id is not None:
             stmt = stmt.where(WordEn.id == payload.word_id)
-        elif payload.level is not None:
-            stmt = stmt.join(WordEn.language_level).where(
-                LanguageLevel.name == _normalize_level(payload.level),
-            )
 
         return await self.session.scalar(stmt)
 
@@ -93,13 +89,12 @@ class VocabularyService:
         user_id: int,
         session_id: str,
         language_level_grade: int | None,
-        payload: VocabularyWordsRequest,
     ) -> WordEn | None:
+        logger.info(f'language_level_grade: {language_level_grade}')
         learned_words_stmt = sa.select(LearnedWord.word_id).where(
             LearnedWord.user_id == user_id,
         )
         word = await self._select_word(
-            payload=payload,
             language_level_grade=language_level_grade,
             extra_filters=[WordEn.id.not_in(learned_words_stmt)],
         )
@@ -161,7 +156,8 @@ class VocabularyService:
             f'Ответ проверен: word_id={word_id}, '
             f'answer_language={answer_language}, '
             f'is_correct={check_result.is_correct}, '
-            f'has_typo={check_result.has_typo}'
+            f'has_typo={check_result.has_typo}\n'
+            f'Полный ответ: {check_result}'
         )
         return check_result
 
@@ -333,7 +329,6 @@ class VocabularyService:
 
     async def _select_word(
         self,
-        payload: VocabularyWordsRequest,
         language_level_grade: int | None = None,
         extra_filters: list[sa.ColumnElement[bool]] | None = None,
     ) -> WordEn | None:
@@ -345,12 +340,7 @@ class VocabularyService:
             )
             .where(WordEn.status == WordStatus.ALLOWED)
         )
-        logger.info(f'payload: {payload}')
-        if payload.level is not None:
-            stmt = stmt.join(WordEn.language_level).where(
-                LanguageLevel.name == _normalize_level(payload.level),
-            )
-        elif language_level_grade is not None:
+        if language_level_grade is not None:
             maximum_grade = min(language_level_grade + 1, 6)
             stmt = stmt.join(WordEn.language_level).where(
                 LanguageLevel.grade <= maximum_grade,
@@ -360,12 +350,11 @@ class VocabularyService:
             stmt = stmt.where(*extra_filters)
 
         stmt = stmt.order_by(sa.func.random()).limit(1)
-        # stmt = stmt.order_by(sa.func.random()).limit(1)
 
-        logger.info(f'Выбираем слово: level={payload.level}')
+        logger.info('Выбираем слово: language_level_grade=%s', language_level_grade)
         result = await self.session.execute(stmt)
         word = result.scalar_one_or_none()
-        logger.info(f'Выбрано слово: word_id={getattr(word, "id", None)}')
+        logger.info(f'Выбрано слово: word_id={getattr(word, "id", None)} level={getattr(word, "level_id", None)}')
         return word
 
     @staticmethod
@@ -422,5 +411,3 @@ class VocabularyService:
         )
 
 
-def _normalize_level(level: str) -> str:
-    return level.strip().upper()

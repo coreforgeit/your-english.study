@@ -516,7 +516,7 @@ input {
 .practice-layout {
   position: relative;
   display: grid;
-  grid-template-rows: auto minmax(280px, 1fr) auto;
+  grid-template-rows: minmax(280px, 1fr) auto;
   gap: 18px;
   min-height: calc(
     100vh - var(--app-content-top) - var(--app-content-bottom) - var(--bottom-navigation-height) -
@@ -526,10 +526,6 @@ input {
     100dvh - var(--app-content-top) - var(--app-content-bottom) - var(--bottom-navigation-height) -
       env(safe-area-inset-top) - env(safe-area-inset-bottom)
   );
-}
-
-.practice-layout-without-header {
-  grid-template-rows: minmax(280px, 1fr) auto;
 }
 
 .practice-start-backdrop {
@@ -703,31 +699,8 @@ input {
   border-color: var(--color-danger-border);
 }
 
-.practice-top {
-  display: grid;
-  gap: 12px;
-}
-
-.level-grid,
 .direction-row {
   gap: 8px;
-}
-
-.level-grid {
-  display: grid;
-}
-
-.level-row {
-  display: grid;
-  gap: 8px;
-}
-
-.level-row:first-child {
-  grid-template-columns: repeat(4, 1fr);
-}
-
-.level-row:last-child {
-  grid-template-columns: repeat(4, 1fr);
 }
 
 .direction-row {
@@ -736,7 +709,6 @@ input {
   padding-bottom: 2px;
 }
 
-.level-button,
 .direction-button,
 .next-button {
   min-height: 40px;
@@ -747,10 +719,6 @@ input {
   cursor: pointer;
   font-weight: 700;
   white-space: nowrap;
-}
-
-.level-button {
-  width: 100%;
 }
 
 .level-any {
@@ -808,7 +776,6 @@ input {
   color: var(--color-neutral-text);
 }
 
-.level-button.active,
 .direction-button.active {
   border-color: var(--color-accent);
 }
@@ -940,7 +907,6 @@ input {
   border-color: var(--color-accent);
 }
 
-.level-button:disabled,
 .direction-button:disabled,
 .answer-input:disabled,
 .answer-icon-button:disabled {
