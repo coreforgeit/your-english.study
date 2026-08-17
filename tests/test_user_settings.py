@@ -1,6 +1,6 @@
 import unittest
 from datetime import time
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 from pydantic import ValidationError
 
@@ -92,8 +92,14 @@ class UserSettingsTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIn('ORDER BY language_levels.grade', compiled_statement)
 
-    async def test_patch_accepts_empty_partial_update(self):
+    @patch('api.routers.user_settings.send_daily_word_learning_reminder')
+    async def test_patch_accepts_empty_partial_update(self, reminder_task):
+        events: list[str] = []
+        reminder_task.kiq = AsyncMock(
+            side_effect=lambda **_: events.append('task_enqueued'),
+        )
         session = AsyncMock()
+        session.commit.side_effect = lambda: events.append('committed')
         session.scalar.return_value = self.make_settings()
         current_user = CurrentTelegramUser(id=42, session_id='session')
 
@@ -104,8 +110,13 @@ class UserSettingsTest(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(response.data.timezone, 'UTC')
+        session.commit.assert_awaited_once_with()
+        reminder_task.kiq.assert_awaited_once_with(user_id=42)
+        self.assertEqual(events, ['committed', 'task_enqueued'])
 
-    async def test_patch_updates_timezone(self):
+    @patch('api.routers.user_settings.send_daily_word_learning_reminder')
+    async def test_patch_updates_timezone(self, reminder_task):
+        reminder_task.kiq = AsyncMock()
         session = AsyncMock()
         settings = self.make_settings()
         session.scalar.return_value = settings
@@ -122,6 +133,7 @@ class UserSettingsTest(unittest.IsolatedAsyncioTestCase):
             response.model_dump(mode='json')['data']['timezone'],
             'Europe/Berlin',
         )
+        reminder_task.kiq.assert_awaited_once_with(user_id=42)
 
     def test_patch_rejects_unknown_settings(self):
         with self.assertRaises(ValidationError):

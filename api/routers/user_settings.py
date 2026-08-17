@@ -10,6 +10,7 @@ from api.schemas.user_settings import (
     UserSettingsUpdate,
 )
 from api.services.user_settings import UserSettingsService
+from worker.reminders.tasks import send_daily_word_learning_reminder
 
 
 router = APIRouter(prefix='/telegram-app/settings', tags=['user-settings'])
@@ -56,5 +57,8 @@ async def update_user_settings(
             status_code=status.HTTP_404_NOT_FOUND,
             detail='User settings not found',
         )
+
+    await session.commit()
+    await send_daily_word_learning_reminder.kiq(user_id=current_user.id)
 
     return UserSettingsResponse(data=UserSettingsData.model_validate(settings))

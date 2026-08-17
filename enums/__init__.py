@@ -1,4 +1,5 @@
 from enums.ai import TextModel, TranscriptionModel
+from enums.reminders import ReminderKey
 from enums.redis import RedisKey
 from enums.user_settings import Timezone
 from enums.usage import AIRequestInitiator, AIRequestScenario
@@ -18,6 +19,7 @@ __all__ = (
     'AnswerLanguage',
     'AnswerType',
     'LearnedWordStatus',
+    'ReminderKey',
     'RedisKey',
     'TextModel',
     'Timezone',

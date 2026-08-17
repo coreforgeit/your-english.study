@@ -3,6 +3,7 @@ from urllib.parse import quote
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
     debug: bool = False
     db_name: str
@@ -18,7 +19,7 @@ class Settings(BaseSettings):
     rabbitmq_user: str = 'english'
     rabbitmq_password: str = 'change_me'
     bot_token: str = ''
-    bot_token_test: str = ''
+    # bot_token_test: str = ''
     api_host: str = '0.0.0.0'
     api_port: int = 8000
     site_url: str = 'https://your-english.study'
