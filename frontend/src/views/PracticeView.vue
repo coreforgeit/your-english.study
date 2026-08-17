@@ -15,6 +15,7 @@ type PracticeDirection = 'ru-en' | 'en-ru' | 'random';
 type DisplayDirection = Exclude<PracticeDirection, 'random'>;
 type AnswerStatus = 'correct' | 'incorrect' | null;
 type TypoType = 'replace' | 'missing' | 'extra';
+type VoiceAnswerDialogState = 'hidden' | 'checking' | 'error';
 
 type AnswerTypo = {
   index: number;
@@ -101,6 +102,7 @@ const repeatSessionStateSchema = z.object({
 
 const LEARN_SESSION_WORD_STORAGE_KEY = 'practice:last-learn-word';
 const REPEAT_SESSION_STATE_STORAGE_KEY = 'practice:last-repeat-state';
+const VOICE_ANSWER_TIMEOUT_MS = 10_000;
 
 function createPracticeState(displayDirection: DisplayDirection): PracticeState {
   return {
@@ -138,7 +140,12 @@ const repeatState = ref<PracticeState>(createPracticeState('en-ru'));
 const learnState = ref<PracticeState>(createPracticeState('en-ru'));
 const showLearnStartDialog = ref(false);
 const showRepeatStartDialog = ref(false);
+const voiceAnswerDialogState = ref<VoiceAnswerDialogState>('hidden');
 const intervalRepetitionQueue = useIntervalRepetitionQueue();
+
+let answerRequestSequence = 0;
+let activeAnswerRequestId: number | null = null;
+let voiceAnswerTimeout: ReturnType<typeof setTimeout> | null = null;
 
 function restoreLearnSessionWord() {
   try {
@@ -549,6 +556,7 @@ async function startRepeating() {
 }
 
 async function requestWord() {
+  invalidateActiveAnswerRequest();
   const nextMode = selectedMode.value;
   const wordModePath = nextMode === 'learn' ? 'learn' : 'repeat';
   const url = `${BACKEND_URL}/api/telegram-app/words/${wordModePath}`;
@@ -683,6 +691,47 @@ function getCorrectAnswerFromResponse(data: unknown, fallback: string) {
   return fallback;
 }
 
+function clearVoiceAnswerTimeout() {
+  if (voiceAnswerTimeout === null) {
+    return;
+  }
+
+  clearTimeout(voiceAnswerTimeout);
+  voiceAnswerTimeout = null;
+}
+
+function hideVoiceAnswerDialog() {
+  clearVoiceAnswerTimeout();
+  voiceAnswerDialogState.value = 'hidden';
+}
+
+function showVoiceAnswerChecking(requestId: number) {
+  clearVoiceAnswerTimeout();
+  voiceAnswerDialogState.value = 'checking';
+  voiceAnswerTimeout = setTimeout(() => {
+    voiceAnswerTimeout = null;
+    if (activeAnswerRequestId === requestId && voiceAnswerDialogState.value === 'checking') {
+      voiceAnswerDialogState.value = 'error';
+    }
+  }, VOICE_ANSWER_TIMEOUT_MS);
+}
+
+function showVoiceAnswerError(requestId: number) {
+  if (activeAnswerRequestId !== requestId) {
+    return;
+  }
+
+  clearVoiceAnswerTimeout();
+  voiceAnswerDialogState.value = 'error';
+}
+
+function invalidateActiveAnswerRequest() {
+  answerRequestSequence += 1;
+  activeAnswerRequestId = null;
+  isSendingAnswer.value = false;
+  hideVoiceAnswerDialog();
+}
+
 async function submitAnswer(
   targetState = currentState.value,
   options?: { skip?: boolean },
@@ -690,7 +739,8 @@ async function submitAnswer(
   const url = `${BACKEND_URL}/api/telegram-app/words/answer`;
   const wordId = targetState.word?.id;
   const textAnswer = targetState.answerText.trim();
-  const hasAudio = targetState.recordedAudio !== null;
+  const recordedAudio = targetState.recordedAudio;
+  const hasAudio = recordedAudio !== null;
   const skip = options?.skip === true;
   const targetAnswerLanguage = getAnswerLanguage(targetState.displayDirection);
 
@@ -709,7 +759,15 @@ async function submitAnswer(
     return;
   }
 
+  const requestId = ++answerRequestSequence;
+  activeAnswerRequestId = requestId;
   isSendingAnswer.value = true;
+
+  if (hasAudio && !skip) {
+    showVoiceAnswerChecking(requestId);
+  } else {
+    hideVoiceAnswerDialog();
+  }
 
   try {
     const requestInit: RequestInit = {
@@ -733,14 +791,14 @@ async function submitAnswer(
       };
       requestInit.body = JSON.stringify(body);
       requestDebug.body = body;
-    } else if (targetState.recordedAudio) {
+    } else if (recordedAudio) {
       const formData = new FormData();
 
       formData.append('word_id', String(wordId));
       formData.append('answer_type', 'audio');
       formData.append('answer_language', targetAnswerLanguage);
       formData.append('skip', 'false');
-      formData.append('audio_file', targetState.recordedAudio, 'answer.webm');
+      formData.append('audio_file', recordedAudio, 'answer.webm');
 
       requestInit.body = formData;
       requestDebug.body = {
@@ -750,8 +808,8 @@ async function submitAnswer(
         skip: false,
         audio_file: {
           name: 'answer.webm',
-          size: targetState.recordedAudio.size,
-          type: targetState.recordedAudio.type,
+          size: recordedAudio.size,
+          type: recordedAudio.type,
         },
       };
     } else {
@@ -778,9 +836,18 @@ async function submitAnswer(
 
     console.log('[practice-answer:response]', data);
 
+    if (activeAnswerRequestId !== requestId) {
+      console.log('[practice-answer:stale-response]', { requestId });
+      return;
+    }
+
     if (!response.ok) {
       answerError.value = getBackendErrorMessage(data, `Backend вернул ${response.status}`);
-      showError(answerError.value);
+      if (hasAudio && !skip) {
+        showVoiceAnswerError(requestId);
+      } else {
+        showError(answerError.value);
+      }
       return;
     }
 
@@ -793,17 +860,51 @@ async function submitAnswer(
     targetState.recordedAudio = null;
     targetState.showAnswer = true;
     targetState.answerSubmitted = true;
+    hideVoiceAnswerDialog();
   } catch (error) {
+    if (activeAnswerRequestId !== requestId) {
+      console.log('[practice-answer:stale-error]', { requestId, error });
+      return;
+    }
+
     answerError.value = error instanceof Error ? error.message : 'Не удалось отправить ответ';
-    showError(answerError.value);
+    if (hasAudio && !skip) {
+      showVoiceAnswerError(requestId);
+    } else {
+      showError(answerError.value);
+    }
     console.error('[practice-answer:error]', error);
   } finally {
-    isSendingAnswer.value = false;
+    if (activeAnswerRequestId === requestId) {
+      activeAnswerRequestId = null;
+      clearVoiceAnswerTimeout();
+      isSendingAnswer.value = false;
+    }
   }
 }
 
 async function submitCurrentAnswer() {
   await submitAnswer();
+}
+
+async function retryVoiceAnswer() {
+  if (voiceAnswerDialogState.value !== 'error' || !currentState.value.recordedAudio) {
+    return;
+  }
+
+  await submitAnswer(currentState.value);
+}
+
+async function skipTimedOutVoiceAnswer() {
+  if (voiceAnswerDialogState.value !== 'error') {
+    return;
+  }
+
+  const targetState = currentState.value;
+  invalidateActiveAnswerRequest();
+  targetState.answerText = '';
+  targetState.recordedAudio = null;
+  await requestWord();
 }
 
 async function handleNextButton() {
@@ -978,6 +1079,7 @@ async function toggleRecording() {
 }
 
 onUnmounted(() => {
+  invalidateActiveAnswerRequest();
   stopRecording();
   releaseRecordingStream();
 });
@@ -1018,6 +1120,30 @@ onUnmounted(() => {
         <button type="button" class="practice-start-button" @click="startRepeating">
           Начать повторение
         </button>
+      </section>
+    </div>
+
+    <div v-if="voiceAnswerDialogState !== 'hidden'" class="answer-check-backdrop">
+      <section
+        class="answer-check-dialog"
+        :role="voiceAnswerDialogState === 'error' ? 'alertdialog' : 'dialog'"
+        aria-modal="true"
+        aria-live="assertive"
+        aria-labelledby="answer-check-title"
+      >
+        <div v-if="voiceAnswerDialogState === 'checking'" class="answer-check-spinner" aria-hidden="true" />
+        <h2 id="answer-check-title">
+          {{ voiceAnswerDialogState === 'checking' ? 'Проверяю…' : 'Произошла ошибка' }}
+        </h2>
+
+        <div v-if="voiceAnswerDialogState === 'error'" class="answer-check-actions">
+          <button type="button" class="answer-check-button answer-check-retry" @click="retryVoiceAnswer">
+            Отправить снова
+          </button>
+          <button type="button" class="answer-check-button answer-check-skip" @click="skipTimedOutVoiceAnswer">
+            Пропустить
+          </button>
+        </div>
       </section>
     </div>
 

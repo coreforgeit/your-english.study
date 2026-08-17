@@ -1,6 +1,6 @@
 import logging
 import unicodedata
-from time import perf_counter
+from time import perf_counter, sleep
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
 from pydantic import ValidationError
@@ -113,6 +113,7 @@ async def learn_word(
             model=WordReviewRequest().model,
             session_id=current_user.session_id,
         )
+
 
     return VocabularyWordsResponse(data=word)
 
@@ -329,6 +330,7 @@ async def answer_word(
         total_duration_ms,
         text_answer,
     )
+
 
     return VocabularyWordAnswerResponse(
         data=VocabularyWordAnswerData(
