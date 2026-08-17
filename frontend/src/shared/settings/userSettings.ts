@@ -37,6 +37,20 @@ export type UserSettingsUpdate = {
 
 export const USER_SETTINGS_STORAGE_KEY = 'user_settings';
 
+export function getStoredUserSettings(): UserSettings | null {
+  const storedSettings = localStorage.getItem(USER_SETTINGS_STORAGE_KEY);
+  if (!storedSettings) {
+    return null;
+  }
+
+  try {
+    const parsedSettings = userSettingsSchema.safeParse(JSON.parse(storedSettings));
+    return parsedSettings.success ? parsedSettings.data : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchAndStoreUserSettings(): Promise<UserSettings> {
   const response = await apiRequest(
     '/api/telegram-app/settings',

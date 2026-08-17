@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BookOpen, Languages, MessageCircle, RotateCcw } from '@lucide/vue';
+import { BookOpen, Languages, MessageCircle, RotateCcw, Settings, X } from '@lucide/vue';
 import Button from 'primevue/button';
 import { RouterView, useRoute } from 'vue-router';
 import { computed, onMounted, ref } from 'vue';
@@ -10,6 +10,7 @@ import TimezonePicker from '@/shared/components/TimezonePicker.vue';
 import {
   fetchAndStoreUserSettings,
   fetchLanguageLevels,
+  getStoredUserSettings,
   updateAndStoreUserSettings,
   type LanguageLevel,
   type UserSettings,
@@ -31,8 +32,12 @@ const timezone = ref('UTC');
 const settingsDialogLoading = ref(false);
 const settingsDialogSaving = ref(false);
 const settingsDialogError = ref<string | null>(null);
+const settingsDialogRequired = ref(false);
 const canSaveInitialSettings = computed(
   () => selectedLanguageLevelId.value !== null && !settingsDialogLoading.value && !settingsDialogSaving.value,
+);
+const settingsDialogTitle = computed(() =>
+  settingsDialogRequired.value ? 'Выберите уровень английского' : 'Настройки',
 );
 
 function getBrowserTimezone() {
@@ -43,10 +48,14 @@ function getBrowserTimezone() {
   }
 }
 
-async function openInitialSettingsDialog(settings: UserSettings) {
-  remindersEnabled.value = true;
+async function showSettingsDialog(settings: UserSettings, required: boolean) {
+  settingsDialogRequired.value = required;
+  selectedLanguageLevelId.value = settings.selected_language_level_id;
+  remindersEnabled.value = required ? true : settings.reminders_enabled;
   reminderTime.value = settings.reminder_time.slice(0, 5);
-  timezone.value = getBrowserTimezone() ?? settings.timezone ?? 'UTC';
+  timezone.value = required
+    ? (getBrowserTimezone() ?? settings.timezone ?? 'UTC')
+    : (settings.timezone ?? getBrowserTimezone() ?? 'UTC');
   showLanguageLevelDialog.value = true;
   settingsDialogLoading.value = true;
   settingsDialogError.value = null;
@@ -60,7 +69,29 @@ async function openInitialSettingsDialog(settings: UserSettings) {
   }
 }
 
-async function saveInitialSettings() {
+async function openSettingsDialog() {
+  if (showLanguageLevelDialog.value) {
+    return;
+  }
+
+  const settings = getStoredUserSettings() ?? userSettings.value;
+  if (!settings) {
+    return;
+  }
+
+  await showSettingsDialog(settings, settings.selected_language_level_id === null);
+}
+
+function closeSettingsDialog() {
+  if (settingsDialogRequired.value || settingsDialogSaving.value) {
+    return;
+  }
+
+  showLanguageLevelDialog.value = false;
+  settingsDialogError.value = null;
+}
+
+async function saveSettings() {
   if (!canSaveInitialSettings.value || selectedLanguageLevelId.value === null) {
     return;
   }
@@ -76,6 +107,7 @@ async function saveInitialSettings() {
       timezone: timezone.value,
     });
     showLanguageLevelDialog.value = false;
+    settingsDialogRequired.value = false;
   } catch {
     settingsDialogError.value = 'Не удалось сохранить настройки. Попробуйте ещё раз.';
   } finally {
@@ -98,7 +130,7 @@ async function authorize() {
     authStatus.value = 'authenticated';
 
     if (settings.selected_language_level_id === null) {
-      await openInitialSettingsDialog(settings);
+      await showSettingsDialog(settings, true);
     }
   } catch {
     authStatus.value = 'failed';
@@ -111,6 +143,15 @@ onMounted(authorize);
 <template>
   <div class="app-shell" :class="{ 'tg-dark': colorScheme === 'dark' }">
     <template v-if="authStatus === 'authenticated'">
+      <button
+        class="settings-button app-settings-button"
+        type="button"
+        aria-label="Открыть настройки"
+        @click="openSettingsDialog"
+      >
+        <Settings :size="23" />
+      </button>
+
       <main class="app-content" :class="{ 'app-content-with-navigation': showBottomNavigation }">
         <RouterView />
       </main>
@@ -145,15 +186,32 @@ onMounted(authorize);
         </button>
       </nav>
 
-      <div v-if="showLanguageLevelDialog" class="settings-dialog-backdrop">
+      <div
+        v-if="showLanguageLevelDialog"
+        class="settings-dialog-backdrop"
+        @click.self="closeSettingsDialog"
+      >
         <section
           class="settings-dialog"
           role="dialog"
           aria-modal="true"
           aria-labelledby="language-level-dialog-title"
         >
-          <h2 id="language-level-dialog-title">Выберите уровень английского</h2>
-          <p class="settings-dialog-description">Это поможет подобрать подходящие слова для изучения.</p>
+          <button
+            v-if="!settingsDialogRequired"
+            class="settings-dialog-close"
+            type="button"
+            aria-label="Закрыть настройки"
+            :disabled="settingsDialogSaving"
+            @click="closeSettingsDialog"
+          >
+            <X :size="20" />
+          </button>
+
+          <h2 id="language-level-dialog-title">{{ settingsDialogTitle }}</h2>
+          <p v-if="settingsDialogRequired" class="settings-dialog-description">
+            Это поможет подобрать подходящие слова для изучения.
+          </p>
 
           <fieldset class="language-level-options" :disabled="settingsDialogLoading || settingsDialogSaving">
             <legend>Уровень языка</legend>
@@ -197,7 +255,7 @@ onMounted(authorize);
             class="settings-dialog-submit"
             type="button"
             :disabled="!canSaveInitialSettings"
-            @click="saveInitialSettings"
+            @click="saveSettings"
           >
             {{ settingsDialogSaving ? 'Сохраняем…' : 'ОК' }}
           </button>

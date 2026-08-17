@@ -161,6 +161,7 @@ input {
 }
 
 .settings-dialog {
+  position: relative;
   display: grid;
   gap: 16px;
   width: min(100%, 420px);
@@ -171,6 +172,34 @@ input {
   border-radius: 16px;
   background: var(--color-surface);
   box-shadow: 0 18px 50px var(--color-shadow-strong);
+}
+
+.settings-dialog-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--color-transparent);
+  border-radius: 10px;
+  background: var(--color-transparent);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.settings-dialog-close:hover:not(:disabled),
+.settings-dialog-close:focus-visible:not(:disabled) {
+  border-color: var(--color-border);
+  background: var(--color-background);
+  color: var(--color-text);
+}
+
+.settings-dialog-close:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 .settings-dialog h2,
@@ -394,8 +423,7 @@ input {
 
 .home-layout {
   display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 16px;
+  grid-template-rows: 1fr;
   min-height: calc(
     100vh - var(--app-content-top) - var(--app-content-bottom) - var(--bottom-navigation-height) -
       env(safe-area-inset-top) - env(safe-area-inset-bottom)
@@ -404,11 +432,6 @@ input {
     100dvh - var(--app-content-top) - var(--app-content-bottom) - var(--bottom-navigation-height) -
       env(safe-area-inset-top) - env(safe-area-inset-bottom)
   );
-}
-
-.home-toolbar {
-  display: flex;
-  justify-content: flex-end;
 }
 
 .settings-button {
@@ -421,8 +444,20 @@ input {
   border-radius: 12px;
   background: var(--color-surface);
   color: var(--color-text-muted);
-  cursor: default;
-  opacity: 0.58;
+  cursor: pointer;
+}
+
+.settings-button:hover,
+.settings-button:focus-visible {
+  border-color: var(--color-accent);
+  color: var(--color-primary-text);
+}
+
+.app-settings-button {
+  position: fixed;
+  z-index: 40;
+  top: calc(12px + env(safe-area-inset-top));
+  right: calc(12px + env(safe-area-inset-right));
 }
 
 .home-menu {
