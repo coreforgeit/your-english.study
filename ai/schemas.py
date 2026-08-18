@@ -1,6 +1,8 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+from enums import VocabularyAnswerVerdict
 
 
 class AudioTranscriptionResult(BaseModel):
@@ -28,3 +30,10 @@ class VocabularyReviewResult(BaseModel):
 
 class VocabularyCreationResult(VocabularyReviewResult):
     part_of_speech: str
+
+
+class VocabularyAnswerCheckResult(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    verdict: VocabularyAnswerVerdict
+    comment: str | None = Field(default=None, max_length=200)

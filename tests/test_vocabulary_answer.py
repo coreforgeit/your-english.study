@@ -88,6 +88,7 @@ class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
                     'skip': True,
                     'has_typo': False,
                     'typo': None,
+                    'comment': None,
                 },
             },
         )
@@ -115,7 +116,8 @@ class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
             correct_answer='ответ',
         )
         service = Mock()
-        service.check_text_answer = AsyncMock(return_value=check_result)
+        service.check_text_answer = AsyncMock()
+        service.check_text_answer_ai = AsyncMock(return_value=check_result)
         service.save_answer_error = AsyncMock()
         answer_service = VocabularyAnswerService(
             AsyncMock(),
@@ -139,11 +141,12 @@ class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.data.answer, 'ответ')
         self.assertTrue(response.data.is_correct)
         self.assertFalse(response.data.skip)
-        service.check_text_answer.assert_awaited_once_with(
+        service.check_text_answer_ai.assert_awaited_once_with(
             word_id=7,
             answer_language='ru',
             answer='ответ',
         )
+        service.check_text_answer.assert_not_awaited()
         service.save_answer_error.assert_awaited_once()
         enqueue_repetition.assert_awaited_once_with(
             user_id=42,

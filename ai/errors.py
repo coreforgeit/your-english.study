@@ -8,3 +8,7 @@ class AudioTranscriptionError(AIModuleError):
 
 class VocabularyReviewError(AIModuleError):
     """Raised when a vocabulary review cannot produce a structured result."""
+
+
+class VocabularyAnswerCheckError(AIModuleError):
+    """Raised when AI cannot produce a structured answer check."""

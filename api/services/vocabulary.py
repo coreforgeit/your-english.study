@@ -7,9 +7,10 @@ from sqlalchemy.dialects import postgresql as psql
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ai.vocabulary_answers import check_vocabulary_answer
 from api.schemas.vocabulary import VocabularyRepeatWordRequest
 from db.models import LanguageLevel, LearnedWord, WordEn, WordEnSynonym
-from enums import AnswerLanguage, WordStatus
+from enums import AnswerLanguage, VocabularyAnswerVerdict, WordStatus
 
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,7 @@ class AnswerCheckResult:
     has_typo: bool = False
     typo: dict[str, int | str | None] | None = None
     correct_answer: str | None = None
+    comment: str | None = None
 
 
 class VocabularyService:
@@ -128,6 +130,61 @@ class VocabularyService:
             f'is_correct={check_result.is_correct}, '
             f'has_typo={check_result.has_typo}\n'
             f'Полный ответ: {check_result}'
+        )
+        return check_result
+
+    async def check_text_answer_ai(
+        self,
+        word_id: int,
+        answer_language: AnswerLanguage,
+        answer: str,
+    ) -> AnswerCheckResult | None:
+        word = await self.session.get(
+            WordEn,
+            word_id,
+            options=(selectinload(WordEn.translations),),
+        )
+        if word is None:
+            logger.info('AI-проверка ответа: слово не найдено word_id=%s', word_id)
+            return None
+
+        if answer_language == AnswerLanguage.EN:
+            source_text = word.translation
+            source_language = AnswerLanguage.RU
+            correct_answer = word.word
+        else:
+            source_text = word.word
+            source_language = AnswerLanguage.EN
+            correct_answer = word.translation
+
+        ai_result = await check_vocabulary_answer(
+            source_text=source_text,
+            answer=answer,
+            source_language=source_language.value,
+            target_language=answer_language.value,
+            part_of_speech=word.part_of_speech,
+        )
+        has_minor_issue = (
+            ai_result.verdict
+            == VocabularyAnswerVerdict.CORRECT_WITH_MINOR_ISSUE
+        )
+        check_result = AnswerCheckResult(
+            is_correct=ai_result.verdict != VocabularyAnswerVerdict.INCORRECT,
+            has_typo=has_minor_issue,
+            correct_answer=correct_answer,
+            comment=(
+                ai_result.comment.strip()
+                if has_minor_issue and ai_result.comment
+                else None
+            ),
+        )
+        logger.info(
+            'Ответ проверен через AI: word_id=%s answer_language=%s '
+            'verdict=%s comment=%r',
+            word_id,
+            answer_language,
+            ai_result.verdict,
+            check_result.comment,
         )
         return check_result
 

@@ -5,7 +5,7 @@ from time import perf_counter
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ai.errors import AudioTranscriptionError
+from ai.errors import AudioTranscriptionError, VocabularyAnswerCheckError
 from ai.transcriptions import AudioTranscriptionService
 from api.schemas.vocabulary import VocabularyWordAnswerRequest
 from api.services.vocabulary import AnswerCheckResult, VocabularyService
@@ -25,6 +25,10 @@ class VocabularyAnswerWordNotFoundError(Exception):
 
 
 class VocabularyAnswerTranscriptionError(Exception):
+    pass
+
+
+class VocabularyAnswerAICheckError(Exception):
     pass
 
 
@@ -69,6 +73,7 @@ class VocabularyAnswerService:
         session_id: str,
     ) -> VocabularyAnswerResult:
         total_started_at = perf_counter()
+        # получаем текст ответа и тип
         answer, answer_type = await self._resolve_answer(payload, audio_file)
         answer_lookup_started_at = perf_counter()
 
@@ -134,11 +139,28 @@ class VocabularyAnswerService:
         answer_type: AnswerType,
         user_id: int,
     ) -> AnswerCheckResult:
-        check_result = await self.vocabulary_service.check_text_answer(
-            word_id=payload.word_id,
-            answer_language=payload.answer_language,
-            answer=answer,
-        )
+        # check_result = await self.vocabulary_service.check_text_answer(
+        #     word_id=payload.word_id,
+        #     answer_language=payload.answer_language,
+        #     answer=answer,
+        # )
+        try:
+            check_result = await self.vocabulary_service.check_text_answer_ai(
+                word_id=payload.word_id,
+                answer_language=payload.answer_language,
+                answer=answer,
+            )
+            logger.info(
+                'Полный ответ AI при проверке слова: %r',
+                check_result,
+            )
+        except VocabularyAnswerCheckError as exc:
+            logger.exception(
+                'Ошибка AI-проверки ответа: word_id=%s',
+                payload.word_id,
+            )
+            raise VocabularyAnswerAICheckError from exc
+
         if check_result is None:
             logger.info(
                 'Ответ отклонён: слово не найдено word_id=%s',

@@ -33,3 +33,9 @@ class AnswerType(StrEnum):
 class AnswerLanguage(StrEnum):
     EN = 'en'
     RU = 'ru'
+
+
+class VocabularyAnswerVerdict(StrEnum):
+    INCORRECT = 'incorrect'
+    CORRECT = 'correct'
+    CORRECT_WITH_MINOR_ISSUE = 'correct_with_minor_issue'

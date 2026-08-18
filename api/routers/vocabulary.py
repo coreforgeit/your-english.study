@@ -16,6 +16,7 @@ from api.schemas.vocabulary import (
 )
 from api.services.vocabulary import VocabularyService
 from api.services.vocabulary_answer import (
+    VocabularyAnswerAICheckError,
     VocabularyAnswerRequiredError,
     VocabularyAnswerService,
     VocabularyAnswerTranscriptionError,
@@ -167,6 +168,11 @@ async def answer_word(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail='Audio transcription failed',
         ) from exc
+    except VocabularyAnswerAICheckError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail='AI answer check failed',
+        ) from exc
 
     return ApiResponse[VocabularyWordAnswerData](
         data=VocabularyWordAnswerData(
@@ -177,5 +183,6 @@ async def answer_word(
             skip=result.skip,
             has_typo=result.check_result.has_typo,
             typo=result.check_result.typo,
+            comment=result.check_result.comment,
         ),
     )

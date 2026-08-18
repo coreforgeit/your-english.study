@@ -8,3 +8,4 @@ class AIRequestInitiator(StrEnum):
 
 class AIRequestScenario(StrEnum):
     WORD_REVIEW = 'word_review'
+    WORD_ANSWER_CHECK = 'word_answer_check'

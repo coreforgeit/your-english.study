@@ -46,6 +46,9 @@ class VocabularyWordAnswerData(BaseModel):
     skip: bool = False
     has_typo: bool = False
     typo: AnswerTypo | None = None
+    comment: str | None = None
+
+
 class WordReviewResponse(BaseModel):
     success: bool
 
