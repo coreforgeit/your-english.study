@@ -254,6 +254,15 @@ watch(
 const voiceSilenceThreshold = 0.025;
 const voiceSilenceMsToStop = 1200;
 const voiceMinRecordingMs = 500;
+const voiceAudioBitsPerSecond = 48_000;
+const voiceAudioConstraints: MediaTrackConstraints = {
+  channelCount: { ideal: 1 },
+  sampleRate: { ideal: 48_000 },
+  echoCancellation: { ideal: true },
+  noiseSuppression: { ideal: true },
+  autoGainControl: { ideal: true },
+};
+const voiceMimeTypes = ['audio/webm;codecs=opus', 'audio/webm'];
 
 let voiceDetected = false;
 let silenceStartedAt: number | null = null;
@@ -929,11 +938,35 @@ async function getRecordingStream() {
     return recordingStream.value;
   }
 
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: voiceAudioConstraints,
+  });
   recordingStream.value = stream;
   setRecordingStreamEnabled(true);
 
   return stream;
+}
+
+function createVoiceMediaRecorder(stream: MediaStream) {
+  const mimeType = voiceMimeTypes.find((type) => MediaRecorder.isTypeSupported(type));
+  const options: MediaRecorderOptions = {
+    audioBitsPerSecond: voiceAudioBitsPerSecond,
+    ...(mimeType ? { mimeType } : {}),
+  };
+
+  try {
+    return new MediaRecorder(stream, options);
+  } catch (error) {
+    if (!(error instanceof DOMException) || error.name !== 'NotSupportedError') {
+      throw error;
+    }
+
+    console.warn(
+      '[practice-answer:voice-settings]',
+      'WebView не поддерживает выбранные настройки записи, используются настройки по умолчанию.',
+    );
+    return new MediaRecorder(stream);
+  }
 }
 
 function releaseRecordingStream() {
@@ -1037,8 +1070,7 @@ async function startRecording() {
 
   try {
     const stream = await getRecordingStream();
-    const options = MediaRecorder.isTypeSupported('audio/webm') ? { mimeType: 'audio/webm' } : undefined;
-    const recorder = new MediaRecorder(stream, options);
+    const recorder = createVoiceMediaRecorder(stream);
     const audioContext = new AudioContext();
     const source = audioContext.createMediaStreamSource(stream);
     const analyser = audioContext.createAnalyser();
@@ -1049,6 +1081,11 @@ async function startRecording() {
     mediaRecorder.value = recorder;
     recordingAudioContext.value = audioContext;
     recordingAnalyser.value = analyser;
+    console.log('[practice-answer:voice-settings]', {
+      track: stream.getAudioTracks()[0]?.getSettings(),
+      mime_type: recorder.mimeType,
+      audio_bits_per_second: recorder.audioBitsPerSecond,
+    });
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
         audioChunks.value.push(event.data);
