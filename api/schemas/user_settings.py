@@ -13,10 +13,6 @@ class LanguageLevelData(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class LanguageLevelsResponse(BaseModel):
-    data: list[LanguageLevelData]
-
-
 class UserSettingsData(BaseModel):
     selected_language_level_id: int | None
     system_language_level_id: int | None
@@ -41,7 +37,3 @@ class UserSettingsUpdate(BaseModel):
         if value is None:
             raise ValueError('field must not be null')
         return value
-
-
-class UserSettingsResponse(BaseModel):
-    data: UserSettingsData

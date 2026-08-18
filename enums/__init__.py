@@ -11,6 +11,7 @@ from enums.vocabulary import (
     WordSource,
     WordStatus,
 )
+from enums.worker_tasks import WorkerTaskName
 
 
 __all__ = (
@@ -27,4 +28,5 @@ __all__ = (
     'WordCountry',
     'WordSource',
     'WordStatus',
+    'WorkerTaskName',
 )

@@ -1,6 +1,4 @@
-from taskiq_aio_pika import AioPikaBroker
-
-from core.config import settings
+from task_queue.broker import broker
 
 
-broker = AioPikaBroker(settings.rabbitmq_url)
+__all__ = ('broker',)

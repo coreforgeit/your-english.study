@@ -795,7 +795,7 @@ async function submitAnswer(
         word_id: wordId,
         answer_type: 'text',
         answer_language: targetAnswerLanguage,
-        answer: textAnswer,
+        text_answer: textAnswer,
         skip: false,
       };
 

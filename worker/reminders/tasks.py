@@ -10,7 +10,7 @@ from apscheduler.triggers.cron import CronTrigger
 from core.config import settings as app_settings
 from db.models import UserSettings
 from db.session import async_session_factory
-from enums import ReminderKey
+from enums import ReminderKey, WorkerTaskName
 from services import VocabularyRepetitionService
 from worker.broker import broker
 from worker.scheduler import register_scheduler_initializer, scheduler
@@ -257,7 +257,7 @@ async def _rebuild_daily_word_learning_reminders() -> None:
 register_scheduler_initializer(_rebuild_daily_word_learning_reminders)
 
 
-@broker.task
+@broker.task(task_name=WorkerTaskName.DAILY_WORD_LEARNING_REMINDER.value)
 async def send_daily_word_learning_reminder(
     *,
     user_id: int,

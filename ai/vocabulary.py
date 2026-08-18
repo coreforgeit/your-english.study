@@ -7,7 +7,7 @@ from ai.errors import VocabularyReviewError
 from ai.prompts import VOCABULARY_CREATION_PROMPT, VOCABULARY_REVIEW_PROMPT
 from ai.schemas import VocabularyCreationResult, VocabularyReviewResult
 from enums import AIRequestInitiator, AIRequestScenario, TextModel
-from worker.usage.tasks import save_text_model_usage
+from task_queue.tasks import save_text_model_usage
 
 
 VocabularyResult = TypeVar('VocabularyResult', bound=BaseModel)

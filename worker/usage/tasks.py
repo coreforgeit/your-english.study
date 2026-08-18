@@ -2,7 +2,7 @@ import logging
 
 from db.models import TextModelUsage
 from db.session import async_session_factory
-from enums import AIRequestInitiator, AIRequestScenario, TextModel
+from enums import AIRequestInitiator, AIRequestScenario, TextModel, WorkerTaskName
 from worker.broker import broker
 from worker.usage.pricing import calculate_text_request_cost
 
@@ -10,7 +10,7 @@ from worker.usage.pricing import calculate_text_request_cost
 logger = logging.getLogger(__name__)
 
 
-@broker.task
+@broker.task(task_name=WorkerTaskName.SAVE_TEXT_MODEL_USAGE.value)
 async def save_text_model_usage(
     *,
     model: str,

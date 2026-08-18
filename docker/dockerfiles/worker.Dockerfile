@@ -18,5 +18,6 @@ COPY core ./core
 COPY db ./db
 COPY enums ./enums
 COPY services ./services
+COPY task_queue ./task_queue
 
 CMD ["taskiq", "worker", "worker.broker:broker", "worker.tasks", "--workers", "1", "--max-async-tasks", "10", "--log-level", "INFO"]

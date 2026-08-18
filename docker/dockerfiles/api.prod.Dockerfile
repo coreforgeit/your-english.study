@@ -12,7 +12,13 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY api ./api
+COPY ai ./ai
+COPY core ./core
+COPY db ./db
+COPY enums ./enums
+COPY services ./services
+COPY task_queue ./task_queue
 
 EXPOSE 8000
 

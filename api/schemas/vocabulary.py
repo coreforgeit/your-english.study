@@ -23,19 +23,11 @@ class WordRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class VocabularyWordsResponse(BaseModel):
-    data: WordRead
-
-
-class VocabularyIntervalRepetitionsResponse(BaseModel):
-    data: list[int]
-
-
 class VocabularyWordAnswerRequest(BaseModel):
     word_id: int
     answer_type: AnswerType
     answer_language: AnswerLanguage
-    answer: str | None = None
+    text_answer: str | None = None
     skip: bool = False
 
 
@@ -54,12 +46,6 @@ class VocabularyWordAnswerData(BaseModel):
     skip: bool = False
     has_typo: bool = False
     typo: AnswerTypo | None = None
-
-
-class VocabularyWordAnswerResponse(BaseModel):
-    data: VocabularyWordAnswerData
-
-
 class WordReviewResponse(BaseModel):
     success: bool
 

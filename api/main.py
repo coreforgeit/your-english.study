@@ -8,7 +8,7 @@ from api.routers.health import router as health_router
 from api.services.session import close_session_store
 from core.config import settings
 from core.logging import setup_logging
-from worker.broker import broker
+from task_queue.broker import broker
 
 setup_logging()
 

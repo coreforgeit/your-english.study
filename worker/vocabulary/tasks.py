@@ -4,7 +4,7 @@ import sqlalchemy as sa
 
 from db.models import LearnedWord, WordRepetitionAnswer
 from db.session import async_session_factory
-from enums import LearnedWordStatus, TextModel
+from enums import LearnedWordStatus, TextModel, WorkerTaskName
 from worker.broker import broker
 from worker.vocabulary.service import VocabularyReviewService
 
@@ -12,7 +12,7 @@ from worker.vocabulary.service import VocabularyReviewService
 logger = logging.getLogger(__name__)
 
 
-@broker.task
+@broker.task(task_name=WorkerTaskName.RECORD_WORD_REPETITION.value)
 async def record_word_repetition(
     *,
     user_id: int,
@@ -97,7 +97,7 @@ async def record_word_repetition(
     )
 
 
-@broker.task
+@broker.task(task_name=WorkerTaskName.REVIEW_WORD.value)
 async def review_word(
     *,
     word_id: int,
