@@ -26,6 +26,7 @@ const props = withDefaults(
     translationLanguage?: string | null;
     partOfSpeech?: string | null;
     audioUrl?: string | null;
+    comment?: string | null;
     tone?: 'english' | 'russian' | 'neutral';
     result?: 'correct' | 'incorrect' | 'neutral' | null;
     skipped?: boolean;
@@ -42,6 +43,7 @@ const props = withDefaults(
     translationLanguage: null,
     partOfSpeech: null,
     audioUrl: null,
+    comment: null,
     tone: 'neutral',
     result: null,
     skipped: false,
@@ -195,6 +197,7 @@ watch(
     props.pronunciation,
     props.translation,
     props.partOfSpeech,
+    props.comment,
     props.audioUrl,
   ],
   () => void nextTick(fitTextToCard),
@@ -271,6 +274,8 @@ watch(() => props.audioUrl, resetAudioState);
           </div>
         </div>
       </div>
+
+      <p v-if="comment" class="word-card-comment" data-fit-text>{{ comment }}</p>
 
       <div v-if="translation" class="word-card-translation">
         <span v-if="translationLanguage">{{ translationLanguage }}</span>
@@ -410,6 +415,18 @@ watch(() => props.audioUrl, resetAudioState);
   color: var(--color-success-text);
   font-size: clamp(22px, 9vw, 40px);
   line-height: 1.08;
+}
+
+.word-card-comment {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .word-card-submitted {

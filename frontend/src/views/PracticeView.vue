@@ -60,6 +60,7 @@ type PracticeState = {
   answerTypo: AnswerTypo | null;
   submittedAnswer: string;
   correctAnswer: string;
+  answerComment: string | null;
   recordedAudio: Blob | null;
 };
 
@@ -97,6 +98,7 @@ const repeatSessionStateSchema = z.object({
   answerTypo: answerTypoStorageSchema.nullable(),
   submittedAnswer: z.string(),
   correctAnswer: z.string(),
+  answerComment: z.string().nullable().default(null),
 });
 
 const LEARN_SESSION_WORD_STORAGE_KEY = 'practice:last-learn-word';
@@ -115,6 +117,7 @@ function createPracticeState(displayDirection: DisplayDirection): PracticeState 
     answerTypo: null,
     submittedAnswer: '',
     correctAnswer: '',
+    answerComment: null,
     recordedAudio: null,
   };
 }
@@ -212,6 +215,7 @@ function saveRepeatSessionState(state: PracticeState) {
         answerTypo: state.answerTypo,
         submittedAnswer: state.submittedAnswer,
         correctAnswer: state.correctAnswer,
+        answerComment: state.answerComment,
       }),
     );
   } catch {
@@ -597,6 +601,7 @@ async function requestWord() {
     targetState.answerTypo = null;
     targetState.submittedAnswer = '';
     targetState.correctAnswer = '';
+    targetState.answerComment = null;
     targetState.answerText = '';
     targetState.recordedAudio = null;
     targetState.answerSubmitted = nextMode === 'learn';
@@ -667,6 +672,21 @@ function getCorrectAnswerFromResponse(data: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function getAnswerCommentFromResponse(data: unknown) {
+  const responseData = getResponseData(data);
+
+  if (
+    responseData &&
+    typeof responseData === 'object' &&
+    'comment' in responseData &&
+    typeof responseData.comment === 'string'
+  ) {
+    return responseData.comment.trim() || null;
+  }
+
+  return null;
 }
 
 function clearVoiceAnswerTimeout() {
@@ -834,6 +854,7 @@ async function submitAnswer(
     targetState.answerTypo = getAnswerTypo(data);
     targetState.submittedAnswer = getSubmittedAnswerFromResponse(data, skip ? '' : textAnswer);
     targetState.correctAnswer = getCorrectAnswerFromResponse(data, answerBlock.value.text);
+    targetState.answerComment = getAnswerCommentFromResponse(data);
     targetState.answerText = '';
     targetState.recordedAudio = null;
     targetState.showAnswer = true;
@@ -1177,6 +1198,7 @@ onUnmounted(() => {
           currentState.showAnswer && answerTone === 'english' ? currentWord?.partOfSpeech : null
         "
         :audio-url="currentState.showAnswer && answerTone === 'english' ? currentWord?.audioUrl : null"
+        :comment="currentState.showAnswer ? currentState.answerComment : null"
         :tone="answerTone"
         :result="currentState.answerStatus"
         :skipped="currentState.answerSkipped"
