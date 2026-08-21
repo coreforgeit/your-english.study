@@ -46,6 +46,18 @@ class VocabularyRepetitionAnalyticsServiceTest(
         session.scalars.return_value = recent_answers_result
         service = VocabularyRepetitionAnalyticsService(session)
 
+        def get_next_status(
+            current_status: LearnedWordStatus,
+            recent_answers: list[bool],
+        ) -> LearnedWordStatus:
+            self.assertEqual(learned_word.review_count, 4)
+            return VocabularyRepetitionAnalyticsService._get_next_status(
+                current_status,
+                recent_answers,
+            )
+
+        service._get_next_status = MagicMock(side_effect=get_next_status)
+
         status = await service.record_answer(
             user_id=42,
             word_id=7,
@@ -58,6 +70,10 @@ class VocabularyRepetitionAnalyticsServiceTest(
         added_answer = session.add.call_args.args[0]
         self.assertIsInstance(added_answer, WordRepetitionAnswer)
         self.assertTrue(added_answer.is_correct)
+        service._get_next_status.assert_called_once_with(
+            LearnedWordStatus.NEW,
+            [True, True, True],
+        )
         self.assertEqual(learned_word.review_count, 5)
         self.assertIsInstance(learned_word.last_reviewed_at, datetime)
 

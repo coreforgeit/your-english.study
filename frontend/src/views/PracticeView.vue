@@ -39,7 +39,6 @@ type WordData = {
   id: number | null;
   word: string;
   pronunciation: string | null;
-  translation: string;
   translations: string[];
   partOfSpeech: string | null;
   audioUrl: string | null;
@@ -73,7 +72,6 @@ const wordDataStorageSchema = z.object({
   id: z.number().nullable(),
   word: z.string(),
   pronunciation: z.string().nullable(),
-  translation: z.string(),
   translations: z.array(z.string()),
   partOfSpeech: z.string().nullable(),
   audioUrl: z.string().nullable(),
@@ -137,6 +135,8 @@ const isRecording = ref(false);
 const requestError = ref<string | null>(null);
 const answerError = ref<string | null>(null);
 const errorMessage = ref<string | null>(null);
+// Temporary UI diagnostics for voice answer failures.
+const answerDebugReport = ref<string | null>(null);
 const mediaRecorder = ref<MediaRecorder | null>(null);
 const audioChunks = ref<BlobPart[]>([]);
 const recordingStream = ref<MediaStream | null>(null);
@@ -305,7 +305,6 @@ const promptTone = computed(() => (currentState.value.displayDirection === 'en-r
 const answerTone = computed(() => (currentState.value.displayDirection === 'en-ru' ? 'russian' : 'english'));
 const promptLanguage = computed(() => (currentState.value.displayDirection === 'en-ru' ? 'ENG' : 'RU'));
 const answerLanguage = computed(() => (currentState.value.displayDirection === 'en-ru' ? 'RU' : 'ENG'));
-const answerRequestLanguage = computed(() => (currentState.value.displayDirection === 'en-ru' ? 'ru' : 'en'));
 const isLearnMode = computed(() => selectedMode.value === 'learn');
 const hasCurrentWord = computed(() => currentWord.value !== null);
 const isMicrophoneDisabled = computed(
@@ -462,8 +461,6 @@ function normalizeWordData(data: unknown): WordData | null {
     word: wordData.word,
     pronunciation:
       'pronunciation' in wordData && typeof wordData.pronunciation === 'string' ? wordData.pronunciation : null,
-    translation:
-      'translation' in wordData && typeof wordData.translation === 'string' ? wordData.translation : 'Перевод не пришел',
     translations: getWordTranslations(wordData),
     partOfSpeech:
       'part_of_speech' in wordData && typeof wordData.part_of_speech === 'string' ? wordData.part_of_speech : null,
@@ -486,11 +483,7 @@ function getWordTranslations(wordData: object): string[] {
     }
   }
 
-  if ('translation' in wordData && typeof wordData.translation === 'string') {
-    return [wordData.translation];
-  }
-
-  return ['РџРµСЂРµРІРѕРґ РЅРµ РїСЂРёС€РµР»'];
+  return ['Перевод не пришёл'];
 }
 
 function getBackendErrorMessage(data: unknown, fallback: string) {
@@ -617,8 +610,7 @@ async function requestWord(options?: { reloadIntervalRepetitions?: boolean }) {
       id: null,
       word: 'Ответ без слова',
       pronunciation: null,
-      translations: ['РћС‚РІРµС‚ Р±РµР· РїРµСЂРµРІРѕРґР°'],
-      translation: 'Ответ без перевода',
+      translations: ['Ответ без перевода'],
       partOfSpeech: null,
       audioUrl: null,
       level: null,
@@ -736,26 +728,37 @@ function clearVoiceAnswerTimeout() {
 function hideVoiceAnswerDialog() {
   clearVoiceAnswerTimeout();
   voiceAnswerDialogState.value = 'hidden';
+  answerDebugReport.value = null;
 }
 
-function showVoiceAnswerChecking(requestId: number) {
+function showVoiceAnswerChecking(requestId: number, debugPrefix: string) {
   clearVoiceAnswerTimeout();
+  answerDebugReport.value = null;
   voiceAnswerDialogState.value = 'checking';
   voiceAnswerTimeout = setTimeout(() => {
     voiceAnswerTimeout = null;
     if (activeAnswerRequestId === requestId && voiceAnswerDialogState.value === 'checking') {
+      answerDebugReport.value = `${debugPrefix} · timeout>${VOICE_ANSWER_TIMEOUT_MS}ms`;
       voiceAnswerDialogState.value = 'error';
     }
   }, VOICE_ANSWER_TIMEOUT_MS);
 }
 
-function showVoiceAnswerError(requestId: number) {
+function showVoiceAnswerError(requestId: number, debugReport: string) {
   if (activeAnswerRequestId !== requestId) {
     return;
   }
 
   clearVoiceAnswerTimeout();
+  answerDebugReport.value = debugReport;
   voiceAnswerDialogState.value = 'error';
+}
+
+function shortenDebugValue(value: string, maximumLength = 160) {
+  const normalizedValue = value.replace(/\s+/g, ' ').trim();
+  return normalizedValue.length > maximumLength
+    ? `${normalizedValue.slice(0, maximumLength - 1)}…`
+    : normalizedValue;
 }
 
 function invalidateActiveAnswerRequest() {
@@ -793,11 +796,21 @@ async function submitAnswer(
   }
 
   const requestId = ++answerRequestSequence;
+  const answerType = skip ? 'skip' : hasAudio ? 'audio' : 'text';
+  const debugPrefix = [
+    'POST /api/telegram-app/words/answer',
+    `request=${requestId}`,
+    `word_id=${wordId}`,
+    `type=${answerType}`,
+    `lang=${targetAnswerLanguage}`,
+    ...(recordedAudio ? [`audio=${recordedAudio.size}B/${recordedAudio.type || 'unknown'}`] : []),
+  ].join(' · ');
+  const requestStartedAt = performance.now();
   activeAnswerRequestId = requestId;
   isSendingAnswer.value = true;
 
   if (hasAudio && !skip) {
-    showVoiceAnswerChecking(requestId);
+    showVoiceAnswerChecking(requestId, debugPrefix);
   } else {
     hideVoiceAnswerDialog();
   }
@@ -877,7 +890,10 @@ async function submitAnswer(
     if (!response.ok) {
       answerError.value = getBackendErrorMessage(data, `Backend вернул ${response.status}`);
       if (hasAudio && !skip) {
-        showVoiceAnswerError(requestId);
+        showVoiceAnswerError(
+          requestId,
+          `${debugPrefix} · HTTP=${response.status} · time=${Math.round(performance.now() - requestStartedAt)}ms · ${shortenDebugValue(answerError.value)}`,
+        );
       } else {
         showError(answerError.value);
       }
@@ -903,7 +919,10 @@ async function submitAnswer(
 
     answerError.value = error instanceof Error ? error.message : 'Не удалось отправить ответ';
     if (hasAudio && !skip) {
-      showVoiceAnswerError(requestId);
+      showVoiceAnswerError(
+        requestId,
+        `${debugPrefix} · error · time=${Math.round(performance.now() - requestStartedAt)}ms · ${shortenDebugValue(answerError.value)}`,
+      );
     } else {
       showError(answerError.value);
     }
@@ -1196,6 +1215,8 @@ onUnmounted(() => {
         <h2 id="answer-check-title">
           {{ voiceAnswerDialogState === 'checking' ? 'Проверяю…' : 'Произошла ошибка' }}
         </h2>
+
+        <pre v-if="voiceAnswerDialogState === 'error' && answerDebugReport" class="answer-check-debug">{{ answerDebugReport }}</pre>
 
         <div v-if="voiceAnswerDialogState === 'error'" class="answer-check-actions">
           <button type="button" class="answer-check-button answer-check-retry" @click="retryVoiceAnswer">

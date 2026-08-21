@@ -46,37 +46,35 @@ class VocabularyRepetitionAnalyticsService:
             logger.warning(f'Аналитика повторения: изучаемое слово не найдено, user_id={user_id} word_id={word_id}')
             return None
 
+        if learned_word.status != LearnedWordStatus.LEARNED:
+            recent_answers_result = await self.session.scalars(
+                sa.select(WordRepetitionAnswer.is_correct)
+                .where(
+                    WordRepetitionAnswer.user_id == user_id,
+                    WordRepetitionAnswer.word_id == word_id,
+                )
+                .order_by(
+                    WordRepetitionAnswer.created_at.desc(),
+                    WordRepetitionAnswer.id.desc(),
+                )
+                .limit(3),
+            )
+            recent_answers = list(recent_answers_result.all())
+            next_status = self._get_next_status(
+                learned_word.status,
+                recent_answers,
+            )
+            if next_status != learned_word.status:
+                previous_status = learned_word.status
+                learned_word.status = next_status
+                logger.info(
+                    f'Статус изучаемого слова изменён: user_id={user_id} '
+                    f'word_id={word_id} status={previous_status.value} '
+                    f'new_status={next_status.value}',
+                )
+
         learned_word.review_count += 1
         learned_word.last_reviewed_at = datetime.now(UTC)
-        if learned_word.status == LearnedWordStatus.LEARNED:
-            return learned_word.status
-
-        recent_answers_result = await self.session.scalars(
-            sa.select(WordRepetitionAnswer.is_correct)
-            .where(
-                WordRepetitionAnswer.user_id == user_id,
-                WordRepetitionAnswer.word_id == word_id,
-            )
-            .order_by(
-                WordRepetitionAnswer.created_at.desc(),
-                WordRepetitionAnswer.id.desc(),
-            )
-            .limit(3),
-        )
-        recent_answers = list(recent_answers_result.all())
-        next_status = self._get_next_status(
-            learned_word.status,
-            recent_answers,
-        )
-        if next_status != learned_word.status:
-            previous_status = learned_word.status
-            learned_word.status = next_status
-            logger.info(
-                f'Статус изучаемого слова изменён: user_id={user_id} '
-                f'word_id={word_id} status={previous_status.value} '
-                f'new_status={next_status.value}',
-            )
-
         return learned_word.status
 
     @staticmethod
