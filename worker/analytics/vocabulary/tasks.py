@@ -1,7 +1,7 @@
 import logging
 
 from db.session import async_session_factory
-from enums import AnswerLanguage, WorkerTaskName
+from enums import WorkerTaskName
 from worker.analytics.vocabulary.service import (
     VocabularyRepetitionAnalyticsService,
 )
@@ -36,5 +36,3 @@ async def record_word_repetition(
             await session.rollback()
             logger.exception(f'Не удалось обработать повторение слова: user_id={user_id} word_id={word_id}')
             raise
-
-

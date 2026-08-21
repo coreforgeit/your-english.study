@@ -1,34 +1,22 @@
-import json
 import unittest
-from unittest.mock import AsyncMock, Mock, patch
-
-from starlette.requests import Request
+from unittest.mock import AsyncMock, patch
 
 from api.dependencies import CurrentTelegramUser
+from api.parsers import ParsedVocabularyAnswerRequest
 from api.routers.vocabulary import answer_word
 from api.schemas.vocabulary import VocabularyWordAnswerRequest
-from api.services.vocabulary import AnswerCheckResult
-from api.services.vocabulary_answer import AudioAnswerFile, VocabularyAnswerService
-from enums import AnswerLanguage, AnswerType
+from api.services.vocabulary_answer import (
+    AnswerCheckResult,
+    AudioAnswerFile,
+    VocabularyAnswerService,
+)
+from enums import AnswerType
 
 
-def make_json_request(payload: dict) -> Request:
-    body = json.dumps(payload).encode()
-
-    async def receive():
-        return {
-            'type': 'http.request',
-            'body': body,
-            'more_body': False,
-        }
-
-    return Request(
-        {
-            'type': 'http',
-            'method': 'POST',
-            'headers': [(b'content-type', b'application/json')],
-        },
-        receive,
+def make_parsed_request(payload: dict) -> ParsedVocabularyAnswerRequest:
+    return ParsedVocabularyAnswerRequest(
+        payload=VocabularyWordAnswerRequest.model_validate(payload),
+        audio_file=None,
     )
 
 
@@ -46,7 +34,7 @@ class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(payload.skip)
 
     async def test_skip_returns_correct_answer_without_checking(self):
-        request = make_json_request(
+        parsed_request = make_parsed_request(
             {
                 'word_id': 7,
                 'answer_type': 'text',
@@ -55,11 +43,11 @@ class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
             },
         )
         current_user = CurrentTelegramUser(id=42, session_id='session')
-        service = Mock()
-        service.get_correct_answer = AsyncMock(return_value='правильный ответ')
-        service.check_text_answer = AsyncMock()
         answer_service = VocabularyAnswerService(AsyncMock())
-        answer_service.vocabulary_service = service
+        answer_service.get_correct_answer = AsyncMock(
+            return_value='правильный ответ',
+        )
+        answer_service.check_text_answer = AsyncMock()
         enqueue_repetition = AsyncMock()
 
         with (
@@ -67,13 +55,16 @@ class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
                 'api.routers.vocabulary.VocabularyAnswerService',
                 return_value=answer_service,
             ),
-            patch.object(
-                answer_service,
-                '_enqueue_repetition_record',
+            patch(
+                'api.routers.vocabulary.record_word_repetition.kiq',
                 enqueue_repetition,
             ),
         ):
-            response = await answer_word(request, current_user, AsyncMock())
+            response = await answer_word(
+                parsed_request,
+                current_user,
+                AsyncMock(),
+            )
 
         self.assertEqual(
             response.model_dump(),
@@ -90,18 +81,17 @@ class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
                 },
             },
         )
-        service.get_correct_answer.assert_awaited_once()
-        service.check_text_answer.assert_not_awaited()
+        answer_service.get_correct_answer.assert_awaited_once()
+        answer_service.check_text_answer.assert_not_awaited()
         enqueue_repetition.assert_awaited_once_with(
             user_id=42,
             word_id=7,
-            answer_language='ru',
             is_correct=False,
             session_id='session',
         )
 
     async def test_text_answer_uses_common_check_pipeline(self):
-        request = make_json_request(
+        parsed_request = make_parsed_request(
             {
                 'word_id': 7,
                 'answer_type': 'text',
@@ -110,16 +100,22 @@ class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
             },
         )
         current_user = CurrentTelegramUser(id=42, session_id='session')
-        check_result = AnswerCheckResult(
+        local_check_result = AnswerCheckResult(
             is_correct=True,
+            has_typo=True,
+            typo={
+                'index': 5,
+                'type': 'extra',
+                'expected': None,
+                'actual': 'т',
+            },
             correct_answer='ответ',
         )
-        service = Mock()
-        service.check_text_answer = AsyncMock()
-        service.check_text_answer_ai = AsyncMock(return_value=check_result)
-        service.save_answer_error = AsyncMock()
         answer_service = VocabularyAnswerService(AsyncMock())
-        answer_service.vocabulary_service = service
+        answer_service.check_text_answer = AsyncMock(
+            return_value=local_check_result,
+        )
+        answer_service.check_text_answer_ai = AsyncMock()
         enqueue_repetition = AsyncMock()
 
         with (
@@ -127,28 +123,97 @@ class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
                 'api.routers.vocabulary.VocabularyAnswerService',
                 return_value=answer_service,
             ),
-            patch.object(
-                answer_service,
-                '_enqueue_repetition_record',
+            patch(
+                'api.routers.vocabulary.record_word_repetition.kiq',
                 enqueue_repetition,
             ),
         ):
-            response = await answer_word(request, current_user, AsyncMock())
+            response = await answer_word(
+                parsed_request,
+                current_user,
+                AsyncMock(),
+            )
 
         self.assertEqual(response.data.answer, 'ответ')
         self.assertTrue(response.data.is_correct)
         self.assertFalse(response.data.skip)
-        service.check_text_answer_ai.assert_awaited_once_with(
+        self.assertTrue(response.data.has_typo)
+        self.assertEqual(response.data.typo.actual, 'т')
+        self.assertIsNone(response.data.comment)
+        answer_service.check_text_answer.assert_awaited_once_with(
             word_id=7,
             answer_language='ru',
             answer='ответ',
         )
-        service.check_text_answer.assert_not_awaited()
-        service.save_answer_error.assert_awaited_once()
+        answer_service.check_text_answer_ai.assert_not_awaited()
         enqueue_repetition.assert_awaited_once_with(
             user_id=42,
             word_id=7,
+            is_correct=True,
+            session_id='session',
+        )
+
+    async def test_incorrect_local_answer_is_checked_by_ai(self):
+        parsed_request = make_parsed_request(
+            {
+                'word_id': 7,
+                'answer_type': 'text',
+                'answer_language': 'ru',
+                'text_answer': 'близко',
+            },
+        )
+        current_user = CurrentTelegramUser(id=42, session_id='session')
+        local_check_result = AnswerCheckResult(
+            is_correct=False,
+            correct_answer='закрыто',
+        )
+        ai_check_result = AnswerCheckResult(
+            is_correct=True,
+            correct_answer='закрыто',
+            comment='У слова close несколько значений; «близко» — корректный перевод.',
+        )
+        answer_service = VocabularyAnswerService(AsyncMock())
+        answer_service.check_text_answer = AsyncMock(
+            return_value=local_check_result,
+        )
+        answer_service.check_text_answer_ai = AsyncMock(
+            return_value=ai_check_result,
+        )
+        enqueue_repetition = AsyncMock()
+
+        with (
+            patch(
+                'api.routers.vocabulary.VocabularyAnswerService',
+                return_value=answer_service,
+            ),
+            patch(
+                'api.routers.vocabulary.record_word_repetition.kiq',
+                enqueue_repetition,
+            ),
+        ):
+            response = await answer_word(
+                parsed_request,
+                current_user,
+                AsyncMock(),
+            )
+
+        self.assertTrue(response.data.is_correct)
+        self.assertFalse(response.data.has_typo)
+        self.assertIsNone(response.data.typo)
+        self.assertEqual(response.data.comment, ai_check_result.comment)
+        answer_service.check_text_answer.assert_awaited_once_with(
+            word_id=7,
             answer_language='ru',
+            answer='близко',
+        )
+        answer_service.check_text_answer_ai.assert_awaited_once_with(
+            word_id=7,
+            answer_language='ru',
+            answer='близко',
+        )
+        enqueue_repetition.assert_awaited_once_with(
+            user_id=42,
+            word_id=7,
             is_correct=True,
             session_id='session',
         )
@@ -180,30 +245,6 @@ class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(answer, 'аудио')
         self.assertEqual(answer_type, AnswerType.AUDIO)
         transcribe.assert_awaited_once_with(payload, audio_file)
-
-    @patch('api.services.vocabulary_answer.record_word_repetition')
-    async def test_repetition_message_contains_answer_language(
-        self,
-        repetition_task,
-    ) -> None:
-        repetition_task.kiq = AsyncMock()
-
-        await VocabularyAnswerService._enqueue_repetition_record(
-            user_id=42,
-            word_id=7,
-            answer_language=AnswerLanguage.EN,
-            is_correct=True,
-            session_id='session',
-        )
-
-        repetition_task.kiq.assert_awaited_once_with(
-            user_id=42,
-            word_id=7,
-            answer_language='en',
-            is_correct=True,
-            session_id='session',
-        )
-
 
 if __name__ == '__main__':
     unittest.main()

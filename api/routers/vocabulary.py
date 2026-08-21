@@ -1,12 +1,16 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import CurrentTelegramUser, get_current_telegram_user, get_session
-from api.parsers import parse_vocabulary_answer_request
+from api.parsers import (
+    ParsedVocabularyAnswerRequest,
+    parse_vocabulary_answer_request,
+)
 from api.schemas.common import ApiResponse
 from api.schemas.vocabulary import (
+    VocabularyRepeatWordData,
     VocabularyRepeatWordRequest,
     VocabularyWordAnswerData,
     VocabularyWordsRequest,
@@ -25,7 +29,7 @@ from api.services.vocabulary_answer import (
 from db.models import WordEn
 from enums import WordStatus
 from services import VocabularyRepetitionService
-from task_queue.tasks import review_word
+from task_queue.tasks import record_word_repetition, review_word
 
 
 logger = logging.getLogger(__name__)
@@ -77,23 +81,26 @@ async def learn_word(
     return ApiResponse[WordRead](data=word)
 
 
-@router.post('/words/repeat', response_model=ApiResponse[WordRead])
+@router.post(
+    '/words/repeat',
+    response_model=ApiResponse[VocabularyRepeatWordData],
+)
 async def repeat_word(
     payload: VocabularyRepeatWordRequest,
     current_user: CurrentTelegramUser = Depends(get_current_telegram_user),
     session: AsyncSession = Depends(get_session),
-) -> ApiResponse[WordRead]:
+) -> ApiResponse[VocabularyRepeatWordData]:
     logger.info(
         'Repeat word request: user_id=%s word_id=%s',
         current_user.id,
         payload.word_id,
     )
     service = VocabularyService(session)
-    word = await service.get_learned_word_for_user(
+    repeat_word_data = await service.get_learned_word_for_user(
         user_id=current_user.id,
         payload=payload,
     )
-    if word is None:
+    if repeat_word_data is None:
         logger.info(
             'Repeat word response failed: no learned word found user_id=%s word_id=%s',
             current_user.id,
@@ -104,7 +111,13 @@ async def repeat_word(
             detail='Word not found',
         )
 
-    return ApiResponse[WordRead](data=word)
+    word_data = WordRead.model_validate(repeat_word_data.word)
+    return ApiResponse[VocabularyRepeatWordData](
+        data=VocabularyRepeatWordData(
+            **word_data.model_dump(),
+            answer_language=repeat_word_data.answer_language,
+        ),
+    )
 
 
 @router.post(
@@ -112,17 +125,17 @@ async def repeat_word(
     response_model=ApiResponse[VocabularyWordAnswerData],
 )
 async def answer_word(
-    request: Request,
+    parsed_request: ParsedVocabularyAnswerRequest = Depends(
+        parse_vocabulary_answer_request,
+    ),
     current_user: CurrentTelegramUser = Depends(get_current_telegram_user),
     session: AsyncSession = Depends(get_session),
 ) -> ApiResponse[VocabularyWordAnswerData]:
-    parsed_request = await parse_vocabulary_answer_request(request)
     try:
         result = await VocabularyAnswerService(session).process(
             payload=parsed_request.payload,
             audio_file=parsed_request.audio_file,
             user_id=current_user.id,
-            session_id=current_user.session_id,
         )
     except VocabularyAnswerRequiredError as exc:
         raise HTTPException(
@@ -144,6 +157,20 @@ async def answer_word(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail='AI answer check failed',
         ) from exc
+
+    try:
+        await record_word_repetition.kiq(
+            user_id=current_user.id,
+            word_id=parsed_request.payload.word_id,
+            session_id=current_user.session_id,
+            is_correct=result.check_result.is_correct,
+        )
+    except Exception:
+        logger.exception(
+            f'Не удалось отправить повторение слова в воркер: '
+            f'user_id={current_user.id} '
+            f'word_id={parsed_request.payload.word_id}',
+        )
 
     return ApiResponse[VocabularyWordAnswerData](
         data=VocabularyWordAnswerData(

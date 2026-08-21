@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import LearnedWord, WordRepetitionAnswer
-from enums import AnswerLanguage, LearnedWordStatus
+from enums import LearnedWordStatus
 from worker.analytics.vocabulary.service import (
     VocabularyRepetitionAnalyticsService,
 )
@@ -49,7 +49,6 @@ class VocabularyRepetitionAnalyticsServiceTest(
         status = await service.record_answer(
             user_id=42,
             word_id=7,
-            answer_language=AnswerLanguage.EN,
             session_id='answer-session',
             is_correct=True,
         )
@@ -58,7 +57,6 @@ class VocabularyRepetitionAnalyticsServiceTest(
         session.flush.assert_awaited_once_with()
         added_answer = session.add.call_args.args[0]
         self.assertIsInstance(added_answer, WordRepetitionAnswer)
-        self.assertEqual(added_answer.answer_language, AnswerLanguage.EN)
         self.assertTrue(added_answer.is_correct)
         self.assertEqual(learned_word.review_count, 5)
         self.assertIsInstance(learned_word.last_reviewed_at, datetime)
@@ -87,7 +85,6 @@ class VocabularyRepetitionAnalyticsServiceTest(
         status = await service.record_answer(
             user_id=42,
             word_id=7,
-            answer_language=AnswerLanguage.RU,
             session_id='answer-session',
             is_correct=False,
         )
@@ -104,7 +101,6 @@ class VocabularyRepetitionAnalyticsServiceTest(
         status = await service.record_answer(
             user_id=42,
             word_id=7,
-            answer_language=AnswerLanguage.EN,
             session_id='answer-session',
             is_correct=True,
         )
@@ -167,7 +163,7 @@ class VocabularyRepetitionTaskTest(unittest.IsolatedAsyncioTestCase):
         'worker.analytics.vocabulary.tasks.VocabularyRepetitionAnalyticsService',
     )
     @patch('worker.analytics.vocabulary.tasks.async_session_factory')
-    async def test_converts_language_and_commits_result(
+    async def test_commits_result(
         self,
         session_factory: MagicMock,
         service_class: MagicMock,
@@ -187,7 +183,6 @@ class VocabularyRepetitionTaskTest(unittest.IsolatedAsyncioTestCase):
         await record_word_repetition.original_func(
             user_id=42,
             word_id=7,
-            answer_language='ru',
             session_id='session',
             is_correct=True,
         )
@@ -195,7 +190,6 @@ class VocabularyRepetitionTaskTest(unittest.IsolatedAsyncioTestCase):
         service.record_answer.assert_awaited_once_with(
             user_id=42,
             word_id=7,
-            answer_language=AnswerLanguage.RU,
             session_id='session',
             is_correct=True,
         )

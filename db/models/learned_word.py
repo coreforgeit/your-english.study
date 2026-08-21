@@ -48,6 +48,7 @@ class LearnedWord(Base):
     )
     last_reviewed_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True),
+
     )
 
     user: Mapped['User'] = relationship(back_populates='learned_words')

@@ -2,7 +2,6 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import Base
-from enums import AnswerLanguage
 
 
 class WordRepetitionAnswer(Base):

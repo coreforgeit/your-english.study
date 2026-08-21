@@ -10,8 +10,7 @@ import { useIntervalRepetitionQueue } from '@/features/practice/useIntervalRepet
 import { authorizedFetch, BACKEND_URL } from '@/shared/api/client';
 
 type PracticeMode = 'learn' | 'repeat';
-type PracticeDirection = 'ru-en' | 'en-ru' | 'random';
-type DisplayDirection = Exclude<PracticeDirection, 'random'>;
+type DisplayDirection = 'ru-en' | 'en-ru';
 type AnswerStatus = 'correct' | 'incorrect' | null;
 type TypoType = 'replace' | 'missing' | 'extra';
 type VoiceAnswerDialogState = 'hidden' | 'checking' | 'error';
@@ -40,6 +39,7 @@ type WordData = {
   partOfSpeech: string | null;
   audioUrl: string | null;
   level: string | null;
+  answerLanguage: 'en' | 'ru' | null;
 };
 
 type WordInfo = {
@@ -73,6 +73,7 @@ const wordDataStorageSchema = z.object({
   partOfSpeech: z.string().nullable(),
   audioUrl: z.string().nullable(),
   level: z.string().nullable(),
+  answerLanguage: z.enum(['en', 'ru']).nullable().default(null),
 });
 
 const answerTypoStorageSchema = z.object({
@@ -122,7 +123,6 @@ function createPracticeState(displayDirection: DisplayDirection): PracticeState 
   };
 }
 
-const direction = ref<PracticeDirection>('en-ru');
 const route = useRoute();
 const selectedMode = ref<PracticeMode>(route.query.mode === 'learn' ? 'learn' : 'repeat');
 const isLoading = ref(false);
@@ -268,12 +268,6 @@ let voiceDetected = false;
 let silenceStartedAt: number | null = null;
 let recordingStartedAt = 0;
 
-const directions: Array<{ value: PracticeDirection; label: string; className: string }> = [
-  { value: 'ru-en', label: 'RU -> ENG', className: 'direction-ru-en' },
-  { value: 'en-ru', label: 'ENG -> RU', className: 'direction-en-ru' },
-  { value: 'random', label: 'Случайно', className: 'direction-random' },
-];
-
 const currentState = computed(() => (selectedMode.value === 'learn' ? learnState.value : repeatState.value));
 const currentWord = computed(() => currentState.value.word);
 
@@ -340,10 +334,6 @@ function getRequestBody(mode: PracticeMode, intervalRepetitionWordId: number | n
   }
 
   return body;
-}
-
-function resolveDisplayDirection(value: PracticeDirection): DisplayDirection {
-  return value === 'random' ? (Math.random() > 0.5 ? 'ru-en' : 'en-ru') : value;
 }
 
 function getAnswerLanguage(displayDirection: DisplayDirection) {
@@ -466,6 +456,10 @@ function normalizeWordData(data: unknown): WordData | null {
       'part_of_speech' in wordData && typeof wordData.part_of_speech === 'string' ? wordData.part_of_speech : null,
     audioUrl: 'audio_url' in wordData && typeof wordData.audio_url === 'string' ? wordData.audio_url : null,
     level: 'level' in wordData && typeof wordData.level === 'string' ? wordData.level : null,
+    answerLanguage:
+      'answer_language' in wordData && (wordData.answer_language === 'en' || wordData.answer_language === 'ru')
+        ? wordData.answer_language
+        : null,
   };
 }
 
@@ -528,14 +522,6 @@ async function loadIntervalRepetitions() {
   }
 }
 
-function chooseDisplayDirection(value: PracticeDirection) {
-  direction.value = value;
-}
-
-function changeDisplayDirection(value: PracticeDirection) {
-  chooseDisplayDirection(value);
-}
-
 async function startLearning() {
   showLearnStartDialog.value = false;
   await requestWord();
@@ -554,7 +540,7 @@ async function requestWord() {
   clearError();
   requestError.value = null;
   isLoading.value = true;
-  const nextDisplayDirection = resolveDisplayDirection(direction.value);
+  const nextDisplayDirection: DisplayDirection = 'en-ru';
   const targetState = nextMode === 'learn' ? learnState.value : repeatState.value;
   let intervalRepetitionWordId: number | null = null;
 
@@ -602,8 +588,14 @@ async function requestWord() {
       partOfSpeech: null,
       audioUrl: null,
       level: null,
+      answerLanguage: null,
     };
-    targetState.displayDirection = nextDisplayDirection;
+    targetState.displayDirection =
+      nextMode === 'repeat' && targetState.word.answerLanguage !== null
+        ? targetState.word.answerLanguage === 'ru'
+          ? 'en-ru'
+          : 'ru-en'
+        : nextDisplayDirection;
     targetState.showAnswer = false;
     targetState.answerStatus = null;
     targetState.answerSkipped = false;
@@ -1285,19 +1277,6 @@ onUnmounted(() => {
           @click="handleNextButton"
         >
           {{ nextButtonText }}
-        </button>
-      </div>
-
-      <div v-if="!isLearnMode" class="direction-row" aria-label="Направление тренировки">
-        <button
-          v-for="item in directions"
-          :key="item.value"
-          type="button"
-          class="direction-button"
-          :class="[item.className, { active: direction === item.value }]"
-          @click="changeDisplayDirection(item.value)"
-        >
-          {{ item.label }}
         </button>
       </div>
 

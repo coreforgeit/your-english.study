@@ -23,6 +23,10 @@ class WordRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class VocabularyRepeatWordData(WordRead):
+    answer_language: AnswerLanguage
+
+
 class VocabularyWordAnswerRequest(BaseModel):
     word_id: int
     answer_type: AnswerType

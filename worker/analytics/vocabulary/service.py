@@ -5,7 +5,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import LearnedWord, WordRepetitionAnswer
-from enums import AnswerLanguage, LearnedWordStatus
+from enums import LearnedWordStatus
 
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ class VocabularyRepetitionAnalyticsService:
         word_id: int,
         session_id: str,
         is_correct: bool,
-    ) -> None:
+    ) -> LearnedWordStatus | None:
 
         self.session.add(
             WordRepetitionAnswer(
@@ -49,7 +49,7 @@ class VocabularyRepetitionAnalyticsService:
         learned_word.review_count += 1
         learned_word.last_reviewed_at = datetime.now(UTC)
         if learned_word.status == LearnedWordStatus.LEARNED:
-            return
+            return learned_word.status
 
         recent_answers_result = await self.session.scalars(
             sa.select(WordRepetitionAnswer.is_correct)
@@ -59,6 +59,7 @@ class VocabularyRepetitionAnalyticsService:
             )
             .order_by(
                 WordRepetitionAnswer.created_at.desc(),
+                WordRepetitionAnswer.id.desc(),
             )
             .limit(3),
         )
@@ -75,6 +76,8 @@ class VocabularyRepetitionAnalyticsService:
                 f'word_id={word_id} status={previous_status.value} '
                 f'new_status={next_status.value}',
             )
+
+        return learned_word.status
 
     @staticmethod
     def _get_next_status(

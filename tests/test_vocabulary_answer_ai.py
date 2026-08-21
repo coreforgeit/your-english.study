@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from ai.schemas import VocabularyAnswerCheckResult
-from api.services.vocabulary import VocabularyService
+from api.services.vocabulary_answer import VocabularyAnswerService
 from db.models import WordEn, WordRu
 from enums import AnswerLanguage, VocabularyAnswerVerdict
 
@@ -21,10 +21,10 @@ class VocabularyAnswerAICheckTest(unittest.IsolatedAsyncioTestCase):
         )
 
         with patch(
-            'api.services.vocabulary.check_vocabulary_answer',
+            'api.services.vocabulary_answer.check_vocabulary_answer',
             AsyncMock(return_value=ai_result),
         ) as ai_check:
-            result = await VocabularyService(session).check_text_answer_ai(
+            result = await VocabularyAnswerService(session).check_text_answer_ai(
                 word_id=7,
                 answer_language=AnswerLanguage.RU,
                 answer='заданиее',
@@ -32,7 +32,8 @@ class VocabularyAnswerAICheckTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNotNone(result)
         self.assertTrue(result.is_correct)
-        self.assertTrue(result.has_typo)
+        self.assertFalse(result.has_typo)
+        self.assertIsNone(result.typo)
         self.assertEqual(result.correct_answer, 'задание')
         self.assertEqual(result.comment, 'Небольшая опечатка в окончании.')
         ai_check.assert_awaited_once_with(
@@ -56,10 +57,10 @@ class VocabularyAnswerAICheckTest(unittest.IsolatedAsyncioTestCase):
         )
 
         with patch(
-            'api.services.vocabulary.check_vocabulary_answer',
+            'api.services.vocabulary_answer.check_vocabulary_answer',
             AsyncMock(return_value=ai_result),
         ) as ai_check:
-            result = await VocabularyService(session).check_text_answer_ai(
+            result = await VocabularyAnswerService(session).check_text_answer_ai(
                 word_id=7,
                 answer_language=AnswerLanguage.EN,
                 answer='holiday',
