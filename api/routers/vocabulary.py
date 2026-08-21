@@ -45,36 +45,6 @@ async def get_interval_repetitions(
     return ApiResponse[list[int]](data=word_ids)
 
 
-@router.post('/words/repeat', response_model=ApiResponse[WordRead])
-async def repeat_word(
-    payload: VocabularyRepeatWordRequest,
-    current_user: CurrentTelegramUser = Depends(get_current_telegram_user),
-    session: AsyncSession = Depends(get_session),
-) -> ApiResponse[WordRead]:
-    logger.info(
-        'Repeat word request: user_id=%s word_id=%s',
-        current_user.id,
-        payload.word_id,
-    )
-    service = VocabularyService(session)
-    word = await service.get_learned_word_for_user(
-        user_id=current_user.id,
-        payload=payload,
-    )
-    if word is None:
-        logger.info(
-            'Repeat word response failed: no learned word found user_id=%s word_id=%s',
-            current_user.id,
-            payload.word_id,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail='Word not found',
-        )
-
-    return ApiResponse[WordRead](data=word)
-
-
 @router.post('/words/learn', response_model=ApiResponse[WordRead])
 async def learn_word(
     payload: VocabularyWordsRequest,
@@ -107,33 +77,34 @@ async def learn_word(
     return ApiResponse[WordRead](data=word)
 
 
-@router.post(
-    path='/words/{word_id}/review',
-    response_model=WordReviewResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-)
-async def request_word_review(
-    word_id: int,
-    payload: WordReviewRequest | None = None,
+@router.post('/words/repeat', response_model=ApiResponse[WordRead])
+async def repeat_word(
+    payload: VocabularyRepeatWordRequest,
     current_user: CurrentTelegramUser = Depends(get_current_telegram_user),
     session: AsyncSession = Depends(get_session),
-) -> WordReviewResponse:
-    word = await session.get(WordEn, word_id)
-    if word is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Word not found')
-
-    model = payload.model if payload is not None else WordReviewRequest().model
-
-    word.status = WordStatus.CHECKING
-    await session.flush()
-
-    await review_word.kiq(
-        word_id=word.id,
-        model=model.value,
-        session_id=current_user.session_id,
+) -> ApiResponse[WordRead]:
+    logger.info(
+        'Repeat word request: user_id=%s word_id=%s',
+        current_user.id,
+        payload.word_id,
     )
+    service = VocabularyService(session)
+    word = await service.get_learned_word_for_user(
+        user_id=current_user.id,
+        payload=payload,
+    )
+    if word is None:
+        logger.info(
+            'Repeat word response failed: no learned word found user_id=%s word_id=%s',
+            current_user.id,
+            payload.word_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail='Word not found',
+        )
 
-    return WordReviewResponse(success=True)
+    return ApiResponse[WordRead](data=word)
 
 
 @router.post(
@@ -186,3 +157,32 @@ async def answer_word(
             comment=result.check_result.comment,
         ),
     )
+
+
+@router.post(
+    path='/words/{word_id}/review',
+    response_model=WordReviewResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def request_word_review(
+    word_id: int,
+    payload: WordReviewRequest | None = None,
+    current_user: CurrentTelegramUser = Depends(get_current_telegram_user),
+    session: AsyncSession = Depends(get_session),
+) -> WordReviewResponse:
+    word = await session.get(WordEn, word_id)
+    if word is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Word not found')
+
+    model = payload.model if payload is not None else WordReviewRequest().model
+
+    word.status = WordStatus.CHECKING
+    await session.flush()
+
+    await review_word.kiq(
+        word_id=word.id,
+        model=model.value,
+        session_id=current_user.session_id,
+    )
+
+    return WordReviewResponse(success=True)

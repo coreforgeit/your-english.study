@@ -2,6 +2,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import Base
+from enums import AnswerLanguage
 
 
 class WordRepetitionAnswer(Base):
@@ -13,6 +14,13 @@ class WordRepetitionAnswer(Base):
             'word_id',
             'is_correct',
             'created_at',
+        ),
+        sa.Index(
+            'ix_word_repetition_answers_user_word_created_id',
+            'user_id',
+            'word_id',
+            'created_at',
+            'id',
         ),
     )
 

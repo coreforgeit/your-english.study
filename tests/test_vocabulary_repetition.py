@@ -24,6 +24,10 @@ class VocabularyRepetitionServiceTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIn('learned_words.user_id = 42', compiled_statement)
         self.assertIn(
+            "learned_words.status IN ('new', 'familiar')",
+            compiled_statement,
+        )
+        self.assertIn(
             'ORDER BY learned_words.created_at, learned_words.id',
             compiled_statement,
         )

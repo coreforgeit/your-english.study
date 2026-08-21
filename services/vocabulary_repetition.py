@@ -62,6 +62,11 @@ class VocabularyRepetitionService:
 
         return sa.select(LearnedWord.word_id).where(
             LearnedWord.user_id == user_id,
-            LearnedWord.status == LearnedWordStatus.NEW,
+            LearnedWord.status.in_(
+                (
+                    LearnedWordStatus.NEW,
+                    LearnedWordStatus.FAMILIAR,
+                ),
+            ),
             sa.or_(*repetition_conditions),
         )

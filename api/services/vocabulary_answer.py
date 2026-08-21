@@ -9,7 +9,7 @@ from ai.errors import AudioTranscriptionError, VocabularyAnswerCheckError
 from ai.transcriptions import AudioTranscriptionService
 from api.schemas.vocabulary import VocabularyWordAnswerRequest
 from api.services.vocabulary import AnswerCheckResult, VocabularyService
-from enums import AnswerType
+from enums import AnswerLanguage, AnswerType
 from task_queue.tasks import record_word_repetition
 
 
@@ -47,22 +47,15 @@ class VocabularyAnswerResult:
 
 
 class VocabularyAnswerService:
+
     def __init__(
         self,
         session: AsyncSession,
-        vocabulary_service: VocabularyService | None = None,
-        transcription_service: AudioTranscriptionService | None = None,
+        # vocabulary_service: VocabularyService | None = None,
+        # transcription_service: AudioTranscriptionService | None = None,
     ) -> None:
-        self.vocabulary_service = (
-            vocabulary_service
-            if vocabulary_service is not None
-            else VocabularyService(session)
-        )
-        self.transcription_service = (
-            transcription_service
-            if transcription_service is not None
-            else AudioTranscriptionService()
-        )
+        self.vocabulary_service = VocabularyService(session)
+        self.transcription_service = AudioTranscriptionService()
 
     async def process(
         self,
@@ -93,6 +86,7 @@ class VocabularyAnswerService:
         await self._enqueue_repetition_record(
             user_id=user_id,
             word_id=payload.word_id,
+            answer_language=payload.answer_language,
             is_correct=check_result.is_correct,
             session_id=session_id,
         )
@@ -119,6 +113,9 @@ class VocabularyAnswerService:
         self,
         payload: VocabularyWordAnswerRequest,
     ) -> AnswerCheckResult:
+        """
+        Извлекает из базы правильный ответ, при пропуске
+        """
         correct_answer = await self.vocabulary_service.get_correct_answer(
             word_id=payload.word_id,
             answer_language=payload.answer_language,
@@ -150,22 +147,13 @@ class VocabularyAnswerService:
                 answer_language=payload.answer_language,
                 answer=answer,
             )
-            logger.info(
-                'Полный ответ AI при проверке слова: %r',
-                check_result,
-            )
+            logger.info(f'Полный ответ AI при проверке слова: {check_result}')
         except VocabularyAnswerCheckError as exc:
-            logger.exception(
-                'Ошибка AI-проверки ответа: word_id=%s',
-                payload.word_id,
-            )
+            logger.exception(f'Ошибка AI-проверки ответа: word_id={payload.word_id}\n {exc}')
             raise VocabularyAnswerAICheckError from exc
 
         if check_result is None:
-            logger.info(
-                'Ответ отклонён: слово не найдено word_id=%s',
-                payload.word_id,
-            )
+            logger.info(f'Ответ отклонён: слово не найдено word_id={payload.word_id}')
             raise VocabularyAnswerWordNotFoundError
 
         await self.vocabulary_service.save_answer_error(
@@ -243,6 +231,7 @@ class VocabularyAnswerService:
         *,
         user_id: int,
         word_id: int,
+        answer_language: AnswerLanguage,
         is_correct: bool,
         session_id: str,
     ) -> None:
@@ -250,13 +239,12 @@ class VocabularyAnswerService:
             await record_word_repetition.kiq(
                 user_id=user_id,
                 word_id=word_id,
+                answer_language=answer_language.value,
                 is_correct=is_correct,
                 session_id=session_id,
             )
         except Exception:
             logger.exception(
-                'Не удалось отправить запись повторения в воркер: '
-                'user_id=%s word_id=%s',
-                user_id,
-                word_id,
+                f'Не удалось отправить запись повторения в воркер: '
+                f'user_id={user_id} word_id={word_id}',
             )

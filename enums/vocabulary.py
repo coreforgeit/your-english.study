@@ -22,6 +22,7 @@ class WordSource(StrEnum):
 
 class LearnedWordStatus(StrEnum):
     NEW = 'new'
+    FAMILIAR = 'familiar'
     LEARNED = 'learned'
 
 

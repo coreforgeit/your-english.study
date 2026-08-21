@@ -9,7 +9,7 @@ from api.routers.vocabulary import answer_word
 from api.schemas.vocabulary import VocabularyWordAnswerRequest
 from api.services.vocabulary import AnswerCheckResult
 from api.services.vocabulary_answer import AudioAnswerFile, VocabularyAnswerService
-from enums import AnswerType
+from enums import AnswerLanguage, AnswerType
 
 
 def make_json_request(payload: dict) -> Request:
@@ -58,10 +58,8 @@ class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
         service = Mock()
         service.get_correct_answer = AsyncMock(return_value='правильный ответ')
         service.check_text_answer = AsyncMock()
-        answer_service = VocabularyAnswerService(
-            AsyncMock(),
-            vocabulary_service=service,
-        )
+        answer_service = VocabularyAnswerService(AsyncMock())
+        answer_service.vocabulary_service = service
         enqueue_repetition = AsyncMock()
 
         with (
@@ -97,6 +95,7 @@ class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
         enqueue_repetition.assert_awaited_once_with(
             user_id=42,
             word_id=7,
+            answer_language='ru',
             is_correct=False,
             session_id='session',
         )
@@ -119,10 +118,8 @@ class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
         service.check_text_answer = AsyncMock()
         service.check_text_answer_ai = AsyncMock(return_value=check_result)
         service.save_answer_error = AsyncMock()
-        answer_service = VocabularyAnswerService(
-            AsyncMock(),
-            vocabulary_service=service,
-        )
+        answer_service = VocabularyAnswerService(AsyncMock())
+        answer_service.vocabulary_service = service
         enqueue_repetition = AsyncMock()
 
         with (
@@ -151,6 +148,7 @@ class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
         enqueue_repetition.assert_awaited_once_with(
             user_id=42,
             word_id=7,
+            answer_language='ru',
             is_correct=True,
             session_id='session',
         )
@@ -182,6 +180,29 @@ class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(answer, 'аудио')
         self.assertEqual(answer_type, AnswerType.AUDIO)
         transcribe.assert_awaited_once_with(payload, audio_file)
+
+    @patch('api.services.vocabulary_answer.record_word_repetition')
+    async def test_repetition_message_contains_answer_language(
+        self,
+        repetition_task,
+    ) -> None:
+        repetition_task.kiq = AsyncMock()
+
+        await VocabularyAnswerService._enqueue_repetition_record(
+            user_id=42,
+            word_id=7,
+            answer_language=AnswerLanguage.EN,
+            is_correct=True,
+            session_id='session',
+        )
+
+        repetition_task.kiq.assert_awaited_once_with(
+            user_id=42,
+            word_id=7,
+            answer_language='en',
+            is_correct=True,
+            session_id='session',
+        )
 
 
 if __name__ == '__main__':

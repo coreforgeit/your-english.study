@@ -6,9 +6,10 @@ from task_queue.tasks import (
     save_text_model_usage as save_text_model_usage_message,
     send_daily_word_learning_reminder as reminder_message,
 )
+from worker.analytics.vocabulary.tasks import record_word_repetition
 from worker.reminders.tasks import send_daily_word_learning_reminder
 from worker.usage.tasks import save_text_model_usage
-from worker.vocabulary.tasks import record_word_repetition, review_word
+from worker.vocabulary.tasks import review_word
 
 
 class WorkerTaskContractTest(unittest.TestCase):
