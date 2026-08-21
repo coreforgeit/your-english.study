@@ -1,16 +1,18 @@
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import sqlalchemy as sa
 from aiogram import Bot
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from apscheduler.triggers.cron import CronTrigger
 
 from core.config import settings as app_settings
 from db.models import UserSettings
 from db.session import async_session_factory
-from enums import ReminderKey, WorkerTaskName
+from enums import AppLaunchMode, ReminderKey, WorkerTaskName
 from services import VocabularyRepetitionService
 from worker.broker import broker
 from worker.scheduler import register_scheduler_initializer, scheduler
@@ -102,6 +104,17 @@ async def _has_due_repetition_words(user_id: int) -> bool:
         return await VocabularyRepetitionService(session).has_due_words(user_id)
 
 
+def _get_app_launch_url(mode: AppLaunchMode) -> str:
+    app_url = urlsplit(app_settings.app_url)
+    query = [
+        (key, value)
+        for key, value in parse_qsl(app_url.query, keep_blank_values=True)
+        if key != 'mode'
+    ]
+    query.append(('mode', mode.value))
+    return urlunsplit(app_url._replace(query=urlencode(query)))
+
+
 async def _send_daily_word_learning_reminder(*, user_id: int) -> None:
     user_settings = await _get_reminder_settings(user_id)
     if user_settings is None:
@@ -144,7 +157,21 @@ async def _send_daily_word_learning_reminder(*, user_id: int) -> None:
         async with Bot(token=app_settings.bot_token) as bot:
             await bot.send_message(
                 chat_id=user_id,
-                text='Напоминание тест',
+                text='Пора повторить изученные слова.',
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            InlineKeyboardButton(
+                                text='Начать повторение',
+                                web_app=WebAppInfo(
+                                    url=_get_app_launch_url(
+                                        AppLaunchMode.REPEAT,
+                                    ),
+                                ),
+                            ),
+                        ],
+                    ],
+                ),
             )
     except Exception:
         logger.exception(

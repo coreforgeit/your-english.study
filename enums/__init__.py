@@ -1,4 +1,5 @@
 from enums.ai import TextModel, TranscriptionModel
+from enums.app import AppLaunchMode
 from enums.reminders import ReminderKey
 from enums.redis import RedisKey
 from enums.user_settings import Timezone
@@ -18,6 +19,7 @@ from enums.worker_tasks import WorkerTaskName
 __all__ = (
     'AIRequestInitiator',
     'AIRequestScenario',
+    'AppLaunchMode',
     'AnswerLanguage',
     'AnswerType',
     'LearnedWordStatus',

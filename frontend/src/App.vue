@@ -1,12 +1,19 @@
 <script setup lang="ts">
 import { BookOpen, Languages, MessageCircle, RotateCcw, Settings, X } from '@lucide/vue';
 import Button from 'primevue/button';
-import { RouterView, useRoute } from 'vue-router';
+import { RouterView, useRoute, useRouter } from 'vue-router';
 import { computed, onMounted, ref } from 'vue';
 
 import { authenticateTelegram } from '@/shared/api/auth';
 import TimeWheelPicker from '@/shared/components/TimeWheelPicker.vue';
 import TimezonePicker from '@/shared/components/TimezonePicker.vue';
+import {
+  APP_LAUNCH_AUTO_START_VALUE,
+  AppLaunchMode,
+  AppLaunchQuery,
+  parseAppLaunchMode,
+  type AppLaunchMode as AppLaunchModeValue,
+} from '@/shared/navigation/appLaunch';
 import {
   fetchAndStoreUserSettings,
   fetchLanguageLevels,
@@ -19,6 +26,7 @@ import { useTelegramApp } from '@/shared/telegram/useTelegramApp';
 
 const { colorScheme, webApp } = useTelegramApp();
 const route = useRoute();
+const router = useRouter();
 
 const authStatus = ref<'loading' | 'authenticated' | 'failed'>('loading');
 const showBottomNavigation = computed(() => route.name !== 'admin');
@@ -33,6 +41,9 @@ const settingsDialogLoading = ref(false);
 const settingsDialogSaving = ref(false);
 const settingsDialogError = ref<string | null>(null);
 const settingsDialogRequired = ref(false);
+const pendingLaunchMode = ref<AppLaunchModeValue | null>(
+  parseAppLaunchMode(route.query[AppLaunchQuery.MODE]),
+);
 const canSaveInitialSettings = computed(
   () => selectedLanguageLevelId.value !== null && !settingsDialogLoading.value && !settingsDialogSaving.value,
 );
@@ -67,6 +78,21 @@ async function showSettingsDialog(settings: UserSettings, required: boolean) {
   } finally {
     settingsDialogLoading.value = false;
   }
+}
+
+async function openPendingLaunchMode() {
+  if (pendingLaunchMode.value !== AppLaunchMode.REPEAT) {
+    return;
+  }
+
+  await router.replace({
+    name: 'practice',
+    query: {
+      [AppLaunchQuery.MODE]: AppLaunchMode.REPEAT,
+      [AppLaunchQuery.AUTO_START]: APP_LAUNCH_AUTO_START_VALUE,
+    },
+  });
+  pendingLaunchMode.value = null;
 }
 
 async function openSettingsDialog() {
@@ -108,6 +134,7 @@ async function saveSettings() {
     });
     showLanguageLevelDialog.value = false;
     settingsDialogRequired.value = false;
+    await openPendingLaunchMode();
   } catch {
     settingsDialogError.value = 'Не удалось сохранить настройки. Попробуйте ещё раз.';
   } finally {
@@ -127,11 +154,15 @@ async function authorize() {
 
     const settings = await fetchAndStoreUserSettings();
     userSettings.value = settings;
-    authStatus.value = 'authenticated';
 
     if (settings.selected_language_level_id === null) {
+      authStatus.value = 'authenticated';
       await showSettingsDialog(settings, true);
+      return;
     }
+
+    await openPendingLaunchMode();
+    authStatus.value = 'authenticated';
   } catch {
     authStatus.value = 'failed';
   }

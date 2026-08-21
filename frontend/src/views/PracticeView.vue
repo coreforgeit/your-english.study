@@ -1,13 +1,18 @@
 <script setup lang="ts">
 import { Mic, Send } from '@lucide/vue';
 import { computed, onUnmounted, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { z } from 'zod';
 
 import AudioWaveform from '@/features/practice/components/AudioWaveform.vue';
 import WordCard from '@/features/practice/components/WordCard.vue';
 import { useIntervalRepetitionQueue } from '@/features/practice/useIntervalRepetitionQueue';
 import { authorizedFetch, BACKEND_URL } from '@/shared/api/client';
+import {
+  APP_LAUNCH_AUTO_START_VALUE,
+  AppLaunchMode,
+  AppLaunchQuery,
+} from '@/shared/navigation/appLaunch';
 
 type PracticeMode = 'learn' | 'repeat';
 type DisplayDirection = 'ru-en' | 'en-ru';
@@ -124,6 +129,7 @@ function createPracticeState(displayDirection: DisplayDirection): PracticeState 
 }
 
 const route = useRoute();
+const router = useRouter();
 const selectedMode = ref<PracticeMode>(route.query.mode === 'learn' ? 'learn' : 'repeat');
 const isLoading = ref(false);
 const isSendingAnswer = ref(false);
@@ -228,7 +234,14 @@ restoreRepeatSessionState();
 showLearnStartDialog.value = selectedMode.value === 'learn' && !learnState.value.word;
 showRepeatStartDialog.value = selectedMode.value === 'repeat' && !repeatState.value.word;
 
-if (selectedMode.value === 'repeat') {
+const shouldAutoStartRepeat =
+  selectedMode.value === AppLaunchMode.REPEAT &&
+  route.query[AppLaunchQuery.AUTO_START] === APP_LAUNCH_AUTO_START_VALUE;
+
+if (shouldAutoStartRepeat) {
+  showRepeatStartDialog.value = false;
+  void startReminderRepetition();
+} else if (selectedMode.value === 'repeat') {
   void loadIntervalRepetitions();
 }
 
@@ -532,7 +545,15 @@ async function startRepeating() {
   await requestWord();
 }
 
-async function requestWord() {
+async function startReminderRepetition() {
+  await router.replace({
+    name: 'practice',
+    query: { [AppLaunchQuery.MODE]: AppLaunchMode.REPEAT },
+  });
+  await requestWord({ reloadIntervalRepetitions: true });
+}
+
+async function requestWord(options?: { reloadIntervalRepetitions?: boolean }) {
   invalidateActiveAnswerRequest();
   const nextMode = selectedMode.value;
   const wordModePath = nextMode === 'learn' ? 'learn' : 'repeat';
@@ -546,8 +567,21 @@ async function requestWord() {
 
   try {
     if (nextMode === 'repeat') {
-      await loadIntervalRepetitions();
+      if (options?.reloadIntervalRepetitions) {
+        await intervalRepetitionQueue.reload();
+      } else {
+        await loadIntervalRepetitions();
+      }
       intervalRepetitionWordId = intervalRepetitionQueue.getRandomWordId();
+
+      if (
+        options?.reloadIntervalRepetitions &&
+        intervalRepetitionWordId === null
+      ) {
+        requestError.value = 'Сейчас нет слов для интервального повторения';
+        showError(requestError.value);
+        return;
+      }
     }
 
     const body = getRequestBody(nextMode, intervalRepetitionWordId);

@@ -65,12 +65,12 @@ export function useIntervalRepetitionQueue() {
     }
   }
 
-  async function loadOnce() {
+  async function load(force = false) {
     if (loadPromise) {
       return loadPromise;
     }
 
-    if (hasRequested.value) {
+    if (!force && hasRequested.value) {
       return;
     }
 
@@ -99,6 +99,14 @@ export function useIntervalRepetitionQueue() {
     }
   }
 
+  async function loadOnce() {
+    await load();
+  }
+
+  async function reload() {
+    await load(true);
+  }
+
   function getRandomWordId(): number | null {
     if (wordIds.value.length === 0) {
       return null;
@@ -121,6 +129,7 @@ export function useIntervalRepetitionQueue() {
   return {
     getRandomWordId,
     loadOnce,
+    reload,
     removeWordId,
   };
 }

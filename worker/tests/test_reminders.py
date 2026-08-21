@@ -4,10 +4,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
 from core.config import settings as app_settings
-from enums import ReminderKey
+from enums import AppLaunchMode, ReminderKey
 from worker.reminders.tasks import (
     ReminderSettingsSnapshot,
     _get_next_reminder_at_utc,
+    _get_app_launch_url,
     _rebuild_daily_word_learning_reminders,
     _schedule_daily_word_learning_reminder,
     _send_daily_word_learning_reminder,
@@ -16,6 +17,19 @@ from worker.reminders.tasks import (
 
 
 class ReminderTimeTest(unittest.TestCase):
+    def test_builds_repeat_app_url_and_preserves_existing_query(self) -> None:
+        with patch.object(
+            app_settings,
+            'app_url',
+            'https://app.example.test/?source=telegram&mode=learn',
+        ):
+            result = _get_app_launch_url(AppLaunchMode.REPEAT)
+
+        self.assertEqual(
+            result,
+            'https://app.example.test/?source=telegram&mode=repeat',
+        )
+
     def test_uses_today_when_reminder_time_is_still_ahead(self) -> None:
         result = _get_next_reminder_at_utc(
             time(20, 0),
@@ -201,9 +215,17 @@ class ReminderExecutionTest(unittest.IsolatedAsyncioTestCase):
         await _send_daily_word_learning_reminder(user_id=42)
 
         bot_class.assert_called_once_with(token=app_settings.bot_token)
-        bot.send_message.assert_awaited_once_with(
-            chat_id=42,
-            text='Напоминание тест',
+        send_message_call = bot.send_message.await_args
+        self.assertEqual(send_message_call.kwargs['chat_id'], 42)
+        self.assertEqual(
+            send_message_call.kwargs['text'],
+            'Пора повторить изученные слова.',
+        )
+        button = send_message_call.kwargs['reply_markup'].inline_keyboard[0][0]
+        self.assertEqual(button.text, 'Начать повторение')
+        self.assertEqual(
+            button.web_app.url,
+            f'{app_settings.app_url}?mode=repeat',
         )
 
     @patch('worker.reminders.tasks.Bot')
