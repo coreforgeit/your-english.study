@@ -2,12 +2,35 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from api.schemas.vocabulary import VocabularyRepeatWordRequest
+from api.schemas.vocabulary import (
+    VocabularyRepeatWordData,
+    VocabularyRepeatWordRequest,
+    WordRead,
+)
 from api.services.vocabulary import VocabularyService
 from enums import AnswerLanguage, LearnedWordStatus
 
 
 class VocabularyRepeatTest(unittest.IsolatedAsyncioTestCase):
+    def test_repeat_response_accepts_dumped_translations_field(self):
+        word = WordRead(
+            id=148,
+            word='apartment',
+            pronunciation='/əˈpɑːt.mənt/',
+            translations=['квартира'],
+            part_of_speech='noun',
+            level='A1',
+            audio_url=None,
+        )
+
+        response_data = VocabularyRepeatWordData(
+            **word.model_dump(),
+            answer_language='ru',
+        )
+
+        self.assertEqual(response_data.translations, ['квартира'])
+        self.assertEqual(response_data.answer_language, AnswerLanguage.RU)
+
     def test_word_id_is_optional(self):
         payload = VocabularyRepeatWordRequest()
 
