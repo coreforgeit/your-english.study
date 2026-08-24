@@ -174,7 +174,7 @@ jobs:
           compose rm -f api worker bot frontend caddy || true
 
           echo "Running database migrations"
-          if compose run -T --rm api alembic upgrade head; then
+          if compose run --interactive=false -T --rm api alembic upgrade head; then
             echo "Database migrations completed"
           else
             migration_exit_code=$?
