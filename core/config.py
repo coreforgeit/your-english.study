@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     www_url: str = 'https://www.your-english.study'
     app_url: str = 'https://app.your-english.study'
     api_url: str = 'https://api.your-english.study'
+    s3_dev_url: str = 'https://pub-ede6acbb2362440ab69f18300a55c221.r2.dev'
     log_level: str = 'INFO'
     vocabulary_repetition_intervals: list[int] = Field(
         default_factory=lambda: [0, 1, 3, 7, 14],
