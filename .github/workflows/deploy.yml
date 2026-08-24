@@ -173,9 +173,14 @@ jobs:
           echo "Removing old app containers"
           compose rm -f api worker bot frontend caddy || true
 
-          #  echo "Running migrations"
-          #  compose run -T --rm api alembic upgrade head
-          #  echo "Migrations completed"
+          echo "Running database migrations"
+          if compose run -T --rm api alembic upgrade head; then
+            echo "Database migrations completed"
+          else
+            migration_exit_code=$?
+            echo "::warning title=Database migrations failed::Automatic database migration failed with exit code ${migration_exit_code}. Apply migrations manually."
+            echo "WARNING: Database migrations were not applied automatically. Run 'alembic upgrade head' manually."
+          fi
 
           echo "Starting new app containers"
           compose up -d --force-recreate --remove-orphans api worker bot frontend caddy
