@@ -10,6 +10,7 @@ class WordCountry(StrEnum):
 class WordStatus(StrEnum):
     ALLOWED = 'allowed'
     CHECKING = 'checking'
+    MANUAL_REVIEW = 'manual_review'
     FORBIDDEN = 'forbidden'
 
 

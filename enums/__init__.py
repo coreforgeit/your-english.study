@@ -1,4 +1,4 @@
-from enums.ai import TextModel, TranscriptionModel
+from enums.ai import SpeechModel, SpeechVoice, TextModel, TranscriptionModel
 from enums.app import AppLaunchMode
 from enums.reminders import ReminderKey
 from enums.redis import RedisKey
@@ -25,6 +25,8 @@ __all__ = (
     'LearnedWordStatus',
     'ReminderKey',
     'RedisKey',
+    'SpeechModel',
+    'SpeechVoice',
     'TextModel',
     'Timezone',
     'TranscriptionModel',

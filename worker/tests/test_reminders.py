@@ -6,12 +6,8 @@ from zoneinfo import ZoneInfo
 from core.config import settings as app_settings
 from enums import AppLaunchMode, ReminderKey
 from worker.reminders.tasks import (
+    DailyWordLearningReminder,
     ReminderSettingsSnapshot,
-    _get_next_reminder_at_utc,
-    _get_app_launch_url,
-    _rebuild_daily_word_learning_reminders,
-    _schedule_daily_word_learning_reminder,
-    _send_daily_word_learning_reminder,
     send_daily_word_learning_reminder,
 )
 
@@ -23,7 +19,9 @@ class ReminderTimeTest(unittest.TestCase):
             'app_url',
             'https://app.example.test/?source=telegram&mode=learn',
         ):
-            result = _get_app_launch_url(AppLaunchMode.REPEAT)
+            result = DailyWordLearningReminder._get_app_launch_url(
+                AppLaunchMode.REPEAT,
+            )
 
         self.assertEqual(
             result,
@@ -31,7 +29,7 @@ class ReminderTimeTest(unittest.TestCase):
         )
 
     def test_uses_today_when_reminder_time_is_still_ahead(self) -> None:
-        result = _get_next_reminder_at_utc(
+        result = DailyWordLearningReminder._get_next_run_at_utc(
             time(20, 0),
             ZoneInfo('Europe/Berlin'),
             now_utc=datetime(2026, 1, 15, 17, 0, tzinfo=UTC),
@@ -43,7 +41,7 @@ class ReminderTimeTest(unittest.TestCase):
         )
 
     def test_uses_next_day_when_reminder_time_has_passed(self) -> None:
-        result = _get_next_reminder_at_utc(
+        result = DailyWordLearningReminder._get_next_run_at_utc(
             time(20, 0),
             ZoneInfo('Europe/Berlin'),
             now_utc=datetime(2026, 1, 15, 20, 0, tzinfo=UTC),
@@ -57,7 +55,11 @@ class ReminderTimeTest(unittest.TestCase):
 
 class ReminderSchedulingTest(unittest.IsolatedAsyncioTestCase):
     @patch('worker.reminders.tasks.scheduler')
-    @patch('worker.reminders.tasks._get_reminder_settings', new_callable=AsyncMock)
+    @patch.object(
+        DailyWordLearningReminder,
+        '_get_settings',
+        new_callable=AsyncMock,
+    )
     async def test_creates_replaceable_daily_job(
         self,
         get_settings: AsyncMock,
@@ -72,6 +74,10 @@ class ReminderSchedulingTest(unittest.IsolatedAsyncioTestCase):
         await send_daily_word_learning_reminder.original_func(user_id=42)
 
         call = scheduler.add_job.call_args
+        self.assertIs(
+            call.args[0],
+            DailyWordLearningReminder.run_scheduled,
+        )
         self.assertEqual(call.kwargs['id'], 'daily_word_learning:42')
         self.assertEqual(call.kwargs['kwargs'], {'user_id': 42})
         self.assertTrue(call.kwargs['replace_existing'])
@@ -79,7 +85,11 @@ class ReminderSchedulingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(call.kwargs['max_instances'], 1)
 
     @patch('worker.reminders.tasks.scheduler')
-    @patch('worker.reminders.tasks._get_reminder_settings', new_callable=AsyncMock)
+    @patch.object(
+        DailyWordLearningReminder,
+        '_get_settings',
+        new_callable=AsyncMock,
+    )
     async def test_removes_existing_job_when_reminders_are_disabled(
         self,
         get_settings: AsyncMock,
@@ -115,8 +125,7 @@ class ReminderSchedulingTest(unittest.IsolatedAsyncioTestCase):
                 scheduler.reset_mock()
                 scheduler.get_job.return_value = object()
 
-                is_scheduled = await _schedule_daily_word_learning_reminder(
-                    42,
+                is_scheduled = await DailyWordLearningReminder(42).schedule(
                     user_settings,
                 )
 
@@ -127,11 +136,11 @@ class ReminderSchedulingTest(unittest.IsolatedAsyncioTestCase):
                 scheduler.add_job.assert_not_called()
 
     @patch(
-        'worker.reminders.tasks._schedule_daily_word_learning_reminder',
+        'worker.reminders.tasks.DailyWordLearningReminder.schedule',
         new_callable=AsyncMock,
     )
     @patch(
-        'worker.reminders.tasks._get_all_reminder_settings',
+        'worker.reminders.tasks.DailyWordLearningReminder._get_all_settings',
         new_callable=AsyncMock,
     )
     @patch('worker.reminders.tasks.scheduler')
@@ -151,22 +160,27 @@ class ReminderSchedulingTest(unittest.IsolatedAsyncioTestCase):
         unrelated_job = MagicMock(id='another_job:100')
         scheduler.get_jobs.return_value = [stale_reminder, unrelated_job]
 
-        await _rebuild_daily_word_learning_reminders()
+        await DailyWordLearningReminder.rebuild_all()
 
         scheduler.remove_job.assert_called_once_with(stale_reminder.id)
         self.assertEqual(schedule_reminder.await_count, 2)
-        schedule_reminder.assert_any_await(42, user_settings[42])
-        schedule_reminder.assert_any_await(43, user_settings[43])
+        schedule_reminder.assert_any_await(user_settings[42])
+        schedule_reminder.assert_any_await(user_settings[43])
 
 
 class ReminderExecutionTest(unittest.IsolatedAsyncioTestCase):
     @patch('worker.reminders.tasks.scheduler')
     @patch('worker.reminders.tasks.Bot')
-    @patch(
-        'worker.reminders.tasks._has_due_repetition_words',
+    @patch.object(
+        DailyWordLearningReminder,
+        '_has_due_words',
         new_callable=AsyncMock,
     )
-    @patch('worker.reminders.tasks._get_reminder_settings', new_callable=AsyncMock)
+    @patch.object(
+        DailyWordLearningReminder,
+        '_get_settings',
+        new_callable=AsyncMock,
+    )
     async def test_rechecks_disabled_settings_before_sending(
         self,
         get_settings: AsyncMock,
@@ -181,7 +195,7 @@ class ReminderExecutionTest(unittest.IsolatedAsyncioTestCase):
         )
         scheduler.get_job.return_value = object()
 
-        await _send_daily_word_learning_reminder(user_id=42)
+        await DailyWordLearningReminder(42).send()
 
         scheduler.remove_job.assert_called_once_with(
             ReminderKey.DAILY_WORD_LEARNING.for_user(42),
@@ -190,11 +204,16 @@ class ReminderExecutionTest(unittest.IsolatedAsyncioTestCase):
         bot_class.assert_not_called()
 
     @patch('worker.reminders.tasks.Bot')
-    @patch(
-        'worker.reminders.tasks._has_due_repetition_words',
+    @patch.object(
+        DailyWordLearningReminder,
+        '_has_due_words',
         new_callable=AsyncMock,
     )
-    @patch('worker.reminders.tasks._get_reminder_settings', new_callable=AsyncMock)
+    @patch.object(
+        DailyWordLearningReminder,
+        '_get_settings',
+        new_callable=AsyncMock,
+    )
     async def test_rechecks_settings_and_sends_production_message(
         self,
         get_settings: AsyncMock,
@@ -212,7 +231,7 @@ class ReminderExecutionTest(unittest.IsolatedAsyncioTestCase):
         bot.__aexit__ = AsyncMock(return_value=False)
         bot.send_message = AsyncMock()
 
-        await _send_daily_word_learning_reminder(user_id=42)
+        await DailyWordLearningReminder(42).send()
 
         bot_class.assert_called_once_with(token=app_settings.bot_token)
         send_message_call = bot.send_message.await_args
@@ -229,11 +248,16 @@ class ReminderExecutionTest(unittest.IsolatedAsyncioTestCase):
         )
 
     @patch('worker.reminders.tasks.Bot')
-    @patch(
-        'worker.reminders.tasks._has_due_repetition_words',
+    @patch.object(
+        DailyWordLearningReminder,
+        '_has_due_words',
         new_callable=AsyncMock,
     )
-    @patch('worker.reminders.tasks._get_reminder_settings', new_callable=AsyncMock)
+    @patch.object(
+        DailyWordLearningReminder,
+        '_get_settings',
+        new_callable=AsyncMock,
+    )
     async def test_skips_message_when_no_words_are_due(
         self,
         get_settings: AsyncMock,
@@ -247,7 +271,7 @@ class ReminderExecutionTest(unittest.IsolatedAsyncioTestCase):
         )
         has_due_words.return_value = False
 
-        await _send_daily_word_learning_reminder(user_id=42)
+        await DailyWordLearningReminder(42).send()
 
-        has_due_words.assert_awaited_once_with(42)
+        has_due_words.assert_awaited_once_with()
         bot_class.assert_not_called()

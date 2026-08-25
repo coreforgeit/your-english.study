@@ -728,6 +728,7 @@ input {
 }
 
 .direction-button,
+.manual-review-button,
 .next-button {
   min-height: 40px;
   border: 2px solid var(--color-transparent);
@@ -832,7 +833,15 @@ input {
 
 .word-actions {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.manual-review-button {
+  min-height: 48px;
+  padding: 0 12px;
+  background: var(--color-neutral-soft);
+  color: var(--color-neutral-text);
 }
 
 .answer-input-panel {
@@ -932,11 +941,14 @@ input {
   opacity: 0.64;
 }
 
+.manual-review-button:disabled,
 .next-button:disabled {
   cursor: wait;
   opacity: 0.64;
 }
 
+.manual-review-button:not(:disabled):hover,
+.manual-review-button:not(:disabled):focus,
 .next-button:not(:disabled):hover,
 .next-button:not(:disabled):focus {
   border-color: var(--color-accent);

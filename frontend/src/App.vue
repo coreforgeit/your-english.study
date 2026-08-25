@@ -9,10 +9,7 @@ import TimeWheelPicker from '@/shared/components/TimeWheelPicker.vue';
 import TimezonePicker from '@/shared/components/TimezonePicker.vue';
 import {
   APP_LAUNCH_AUTO_START_VALUE,
-  AppLaunchMode,
   AppLaunchQuery,
-  parseAppLaunchMode,
-  type AppLaunchMode as AppLaunchModeValue,
 } from '@/shared/navigation/appLaunch';
 import {
   fetchAndStoreUserSettings,
@@ -41,8 +38,8 @@ const settingsDialogLoading = ref(false);
 const settingsDialogSaving = ref(false);
 const settingsDialogError = ref<string | null>(null);
 const settingsDialogRequired = ref(false);
-const pendingLaunchMode = ref<AppLaunchModeValue | null>(
-  parseAppLaunchMode(route.query[AppLaunchQuery.MODE]),
+const pendingRepeatLaunch = ref(
+  route.query[AppLaunchQuery.MODE] === 'repeat',
 );
 const canSaveInitialSettings = computed(
   () => selectedLanguageLevelId.value !== null && !settingsDialogLoading.value && !settingsDialogSaving.value,
@@ -81,18 +78,17 @@ async function showSettingsDialog(settings: UserSettings, required: boolean) {
 }
 
 async function openPendingLaunchMode() {
-  if (pendingLaunchMode.value !== AppLaunchMode.REPEAT) {
+  if (!pendingRepeatLaunch.value) {
     return;
   }
 
   await router.replace({
-    name: 'practice',
+    name: 'repeat',
     query: {
-      [AppLaunchQuery.MODE]: AppLaunchMode.REPEAT,
       [AppLaunchQuery.AUTO_START]: APP_LAUNCH_AUTO_START_VALUE,
     },
   });
-  pendingLaunchMode.value = null;
+  pendingRepeatLaunch.value = false;
 }
 
 async function openSettingsDialog() {
@@ -190,8 +186,8 @@ onMounted(authorize);
       <nav v-if="showBottomNavigation" class="bottom-navigation" aria-label="Основное меню">
         <RouterLink
           class="bottom-navigation-item"
-          :class="{ active: route.name === 'practice' && route.query.mode === 'learn' }"
-          :to="{ name: 'practice', query: { mode: 'learn' } }"
+          :class="{ active: route.name === 'learn' }"
+          :to="{ name: 'learn' }"
         >
           <BookOpen :size="22" />
           <span>Учить</span>
@@ -199,8 +195,8 @@ onMounted(authorize);
 
         <RouterLink
           class="bottom-navigation-item"
-          :class="{ active: route.name === 'practice' && route.query.mode !== 'learn' }"
-          :to="{ name: 'practice', query: { mode: 'repeat' } }"
+          :class="{ active: route.name === 'repeat' }"
+          :to="{ name: 'repeat' }"
         >
           <RotateCcw :size="22" />
           <span>Повтор</span>

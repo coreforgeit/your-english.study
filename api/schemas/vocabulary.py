@@ -1,6 +1,9 @@
-from pydantic import BaseModel, ConfigDict, Field
+from urllib.parse import urljoin, urlsplit
 
-from enums import AnswerLanguage, AnswerType, TextModel
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from core.config import settings
+from enums import AnswerLanguage, AnswerType, TextModel, WordStatus
 
 
 class VocabularyWordsRequest(BaseModel):
@@ -21,6 +24,23 @@ class WordRead(BaseModel):
     audio_url: str | None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    @field_validator('audio_url', mode='before')
+    @classmethod
+    def build_audio_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        audio_path = value.strip()
+        if not audio_path:
+            return None
+
+        parsed_url = urlsplit(audio_path)
+        if parsed_url.scheme and parsed_url.netloc:
+            return audio_path
+
+        media_url = f'{settings.media_url.rstrip("/")}/'
+        return urljoin(media_url, audio_path.lstrip('/'))
 
 
 class VocabularyRepeatWordData(WordRead):
@@ -51,6 +71,11 @@ class VocabularyWordAnswerData(BaseModel):
     has_typo: bool = False
     typo: AnswerTypo | None = None
     comment: str | None = None
+
+
+class VocabularyWordStatusData(BaseModel):
+    id: int
+    status: WordStatus
 
 
 class WordReviewResponse(BaseModel):

@@ -1,6 +1,52 @@
 from enum import StrEnum
 
 
+class SpeechVoice(StrEnum):
+    """Встроенные голоса OpenAI Speech API."""
+
+    ALLOY = 'alloy'
+    ASH = 'ash'
+    BALLAD = 'ballad'
+    CORAL = 'coral'
+    ECHO = 'echo'
+    FABLE = 'fable'
+    NOVA = 'nova'
+    ONYX = 'onyx'
+    SAGE = 'sage'
+    SHIMMER = 'shimmer'
+    VERSE = 'verse'
+    MARIN = 'marin'
+    CEDAR = 'cedar'
+
+
+class SpeechModel(StrEnum):
+    """Модели OpenAI для преобразования текста в речь."""
+
+    GPT_4O_MINI_TTS = 'gpt-4o-mini-tts'
+    TTS_1 = 'tts-1'
+    TTS_1_HD = 'tts-1-hd'
+
+    @property
+    def supports_instructions(self) -> bool:
+        return self is SpeechModel.GPT_4O_MINI_TTS
+
+    def supports_voice(self, voice: SpeechVoice) -> bool:
+        if self is SpeechModel.GPT_4O_MINI_TTS:
+            return True
+
+        return voice in {
+            SpeechVoice.ALLOY,
+            SpeechVoice.ASH,
+            SpeechVoice.CORAL,
+            SpeechVoice.ECHO,
+            SpeechVoice.FABLE,
+            SpeechVoice.NOVA,
+            SpeechVoice.ONYX,
+            SpeechVoice.SAGE,
+            SpeechVoice.SHIMMER,
+        }
+
+
 class TranscriptionModel(StrEnum):
     GPT_4O_TRANSCRIBE = 'gpt-4o-transcribe'
     GPT_4O_MINI_TRANSCRIBE = 'gpt-4o-mini-transcribe'

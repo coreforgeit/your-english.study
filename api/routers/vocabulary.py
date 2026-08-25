@@ -13,6 +13,7 @@ from api.schemas.vocabulary import (
     VocabularyRepeatWordData,
     VocabularyRepeatWordRequest,
     VocabularyWordAnswerData,
+    VocabularyWordStatusData,
     VocabularyWordsRequest,
     WordRead,
     WordReviewRequest,
@@ -34,6 +35,36 @@ from task_queue.tasks import record_word_repetition, review_word
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix='/telegram-app', tags=['vocabulary'])
+
+
+@router.patch(
+    '/words/{word_id}/manual-review',
+    response_model=ApiResponse[VocabularyWordStatusData],
+)
+async def mark_word_for_manual_review(
+    word_id: int,
+    current_user: CurrentTelegramUser = Depends(get_current_telegram_user),
+    session: AsyncSession = Depends(get_session),
+) -> ApiResponse[VocabularyWordStatusData]:
+    word = await VocabularyService(session).mark_word_for_manual_review(
+        word_id,
+    )
+    if word is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail='Word not found',
+        )
+
+    logger.info(
+        f'Слово отправлено на ручную проверку: '
+        f'user_id={current_user.id} word_id={word.id}',
+    )
+    return ApiResponse[VocabularyWordStatusData](
+        data=VocabularyWordStatusData(
+            id=word.id,
+            status=word.status,
+        ),
+    )
 
 
 @router.get(

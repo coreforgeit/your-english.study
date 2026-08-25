@@ -1,6 +1,6 @@
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from api.schemas.vocabulary import (
     VocabularyRepeatWordData,
@@ -8,10 +8,44 @@ from api.schemas.vocabulary import (
     WordRead,
 )
 from api.services.vocabulary import VocabularyService
+from core.config import settings
 from enums import AnswerLanguage, LearnedWordStatus
 
 
 class VocabularyRepeatTest(unittest.IsolatedAsyncioTestCase):
+    def test_word_response_builds_audio_url_from_media_url(self):
+        with patch.object(settings, 'media_url', 'https://media.example.com/'):
+            word = WordRead(
+                id=148,
+                word='apartment',
+                pronunciation='/əˈpɑːt.mənt/',
+                translations=['квартира'],
+                part_of_speech='noun',
+                level='A1',
+                audio_url='/words/apartment.mp3',
+            )
+
+        self.assertEqual(
+            word.audio_url,
+            'https://media.example.com/words/apartment.mp3',
+        )
+
+    def test_word_response_keeps_absolute_audio_url(self):
+        word = WordRead(
+            id=148,
+            word='apartment',
+            pronunciation='/əˈpɑːt.mənt/',
+            translations=['квартира'],
+            part_of_speech='noun',
+            level='A1',
+            audio_url='https://dictionary.example.com/apartment.mp3',
+        )
+
+        self.assertEqual(
+            word.audio_url,
+            'https://dictionary.example.com/apartment.mp3',
+        )
+
     def test_repeat_response_accepts_dumped_translations_field(self):
         word = WordRead(
             id=148,

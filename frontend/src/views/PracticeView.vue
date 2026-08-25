@@ -10,7 +10,6 @@ import { useIntervalRepetitionQueue } from '@/features/practice/useIntervalRepet
 import { authorizedFetch, BACKEND_URL } from '@/shared/api/client';
 import {
   APP_LAUNCH_AUTO_START_VALUE,
-  AppLaunchMode,
   AppLaunchQuery,
 } from '@/shared/navigation/appLaunch';
 
@@ -128,9 +127,11 @@ function createPracticeState(displayDirection: DisplayDirection): PracticeState 
 
 const route = useRoute();
 const router = useRouter();
-const selectedMode = ref<PracticeMode>(route.query.mode === 'learn' ? 'learn' : 'repeat');
+const selectedMode = ref<PracticeMode>(route.name === 'learn' ? 'learn' : 'repeat');
 const isLoading = ref(false);
 const isSendingAnswer = ref(false);
+const manualReviewLoadingWordId = ref<number | null>(null);
+const manuallyReviewedWordIds = ref<Set<number>>(new Set());
 const isRecording = ref(false);
 const requestError = ref<string | null>(null);
 const answerError = ref<string | null>(null);
@@ -235,7 +236,7 @@ showLearnStartDialog.value = selectedMode.value === 'learn' && !learnState.value
 showRepeatStartDialog.value = selectedMode.value === 'repeat' && !repeatState.value.word;
 
 const shouldAutoStartRepeat =
-  selectedMode.value === AppLaunchMode.REPEAT &&
+  selectedMode.value === 'repeat' &&
   route.query[AppLaunchQuery.AUTO_START] === APP_LAUNCH_AUTO_START_VALUE;
 
 if (shouldAutoStartRepeat) {
@@ -246,9 +247,9 @@ if (shouldAutoStartRepeat) {
 }
 
 watch(
-  () => route.query.mode,
-  (mode) => {
-    selectedMode.value = mode === 'learn' ? 'learn' : 'repeat';
+  () => route.name,
+  (routeName) => {
+    selectedMode.value = routeName === 'learn' ? 'learn' : 'repeat';
     showLearnStartDialog.value = selectedMode.value === 'learn' && !learnState.value.word;
     showRepeatStartDialog.value = selectedMode.value === 'repeat' && !repeatState.value.word;
 
@@ -316,6 +317,36 @@ const isMicrophoneDisabled = computed(
     isLoading.value,
 );
 const isAnswerInputDisabled = computed(() => isMicrophoneDisabled.value || isRecording.value);
+const isManualReviewSending = computed(
+  () =>
+    currentWord.value?.id !== null &&
+    currentWord.value?.id !== undefined &&
+    manualReviewLoadingWordId.value === currentWord.value.id,
+);
+const isCurrentWordManuallyReviewed = computed(
+  () =>
+    currentWord.value?.id !== null &&
+    currentWord.value?.id !== undefined &&
+    manuallyReviewedWordIds.value.has(currentWord.value.id),
+);
+const isManualReviewDisabled = computed(
+  () =>
+    currentWord.value?.id === null ||
+    currentWord.value?.id === undefined ||
+    manualReviewLoadingWordId.value !== null ||
+    isCurrentWordManuallyReviewed.value,
+);
+const manualReviewButtonText = computed(() => {
+  if (isManualReviewSending.value) {
+    return 'Отправляю…';
+  }
+
+  if (isCurrentWordManuallyReviewed.value) {
+    return 'Отправлено на проверку';
+  }
+
+  return 'Тех: проверить слово';
+});
 const nextButtonText = computed(() => {
   if (isLoading.value) {
     return 'Загрузка...';
@@ -540,10 +571,39 @@ async function startRepeating() {
 
 async function startReminderRepetition() {
   await router.replace({
-    name: 'practice',
-    query: { [AppLaunchQuery.MODE]: AppLaunchMode.REPEAT },
+    name: 'repeat',
   });
   await requestWord({ reloadIntervalRepetitions: true });
+}
+
+async function sendCurrentWordToManualReview() {
+  const wordId = currentWord.value?.id;
+  if (wordId === null || wordId === undefined || manualReviewLoadingWordId.value !== null) {
+    return;
+  }
+
+  clearError();
+  manualReviewLoadingWordId.value = wordId;
+
+  try {
+    const response = await authorizedFetch(
+      `${BACKEND_URL}/api/telegram-app/words/${wordId}/manual-review`,
+      { method: 'PATCH' },
+    );
+    const contentType = response.headers.get('content-type') ?? '';
+    const data = contentType.includes('application/json') ? await response.json() : await response.text();
+
+    if (!response.ok) {
+      showError(getBackendErrorMessage(data, `Backend вернул ${response.status}`));
+      return;
+    }
+
+    manuallyReviewedWordIds.value = new Set(manuallyReviewedWordIds.value).add(wordId);
+  } catch {
+    showError('Не удалось отправить слово на ручную проверку');
+  } finally {
+    manualReviewLoadingWordId.value = null;
+  }
 }
 
 async function requestWord(options?: { reloadIntervalRepetitions?: boolean }) {
@@ -1327,8 +1387,16 @@ onUnmounted(() => {
       <div class="word-actions">
         <button
           type="button"
+          class="manual-review-button"
+          :disabled="isManualReviewDisabled"
+          @click="sendCurrentWordToManualReview"
+        >
+          {{ manualReviewButtonText }}
+        </button>
+        <button
+          type="button"
           class="next-button"
-          :disabled="isLoading || isSendingAnswer || isRecording"
+          :disabled="isLoading || isSendingAnswer || isRecording || manualReviewLoadingWordId !== null"
           @click="handleNextButton"
         >
           {{ nextButtonText }}

@@ -24,6 +24,18 @@ class VocabularyService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    async def mark_word_for_manual_review(
+        self,
+        word_id: int,
+    ) -> WordEn | None:
+        word = await self.session.get(WordEn, word_id)
+        if word is None:
+            return None
+
+        word.status = WordStatus.MANUAL_REVIEW
+        await self.session.flush()
+        return word
+
     async def get_learned_word_for_user(
         self,
         user_id: int,
