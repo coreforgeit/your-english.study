@@ -3,6 +3,7 @@ name: english_practice_bot
 services:
   db:
     image: postgres:16-alpine
+    container_name: postgres_ep
     restart: unless-stopped
     env_file:
       - ../.env
@@ -16,12 +17,14 @@ services:
 
   redis:
     image: redis:7-alpine
+    container_name: redis_ep
     restart: unless-stopped
     volumes:
       - redis_data:/data
 
   rabbitmq:
     image: rabbitmq:4-management-alpine
+    container_name: rabbitmq_ep
     restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Set RABBITMQ_USER}
@@ -51,6 +54,7 @@ services:
 
   api:
     image: ${API_IMAGE:?Set API_IMAGE}
+    container_name: api_ep
     restart: unless-stopped
     env_file:
       - ../.env
@@ -70,6 +74,7 @@ services:
 
   worker:
     image: ${WORKER_IMAGE:?Set WORKER_IMAGE}
+    container_name: worker_ep
     restart: unless-stopped
     env_file:
       - ../.env
@@ -83,6 +88,7 @@ services:
 
   bot:
     image: ${BOT_IMAGE:?Set BOT_IMAGE}
+    container_name: bot_ep
     restart: unless-stopped
     env_file:
       - ../.env
@@ -94,6 +100,7 @@ services:
 
   frontend:
     image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE}
+    container_name: frontend_ep
     restart: unless-stopped
 
   caddy:

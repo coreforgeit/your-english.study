@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, Response
@@ -15,6 +16,7 @@ from api.services.user_settings import UserSettingsService
 from core.config import settings
 
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=['auth'])
 
 
@@ -35,6 +37,7 @@ async def auth_tg(
         user_id = get_telegram_user_id(payload.init_data, settings.bot_token)
 
     if user_id is None:
+        logger.info('POST /api/auth_tg response: false')
         return False
 
     session_data = None
@@ -59,4 +62,5 @@ async def auth_tg(
         path='/',
     )
     response.headers['Cache-Control'] = 'no-store'
+    logger.info('POST /api/auth_tg response: true')
     return True

@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,7 +13,7 @@ from api.schemas.user_settings import (
 from api.services.user_settings import UserSettingsService
 from task_queue.tasks import send_daily_word_learning_reminder
 
-
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix='/telegram-app/settings', tags=['user-settings'])
 
 
@@ -34,6 +36,8 @@ async def get_user_settings(
     current_user: CurrentTelegramUser = Depends(get_current_telegram_user),
     session: AsyncSession = Depends(get_session),
 ) -> ApiResponse[UserSettingsData]:
+
+    logger.info(f'get_user_settings')
     settings = await UserSettingsService(session).get_for_user(current_user.id)
     if settings is None:
         raise HTTPException(
@@ -41,8 +45,10 @@ async def get_user_settings(
             detail='User settings not found',
         )
 
+    data = UserSettingsData.model_validate(settings)
+    logger.info(f'get_user_settings: {data}')
     return ApiResponse[UserSettingsData](
-        data=UserSettingsData.model_validate(settings),
+        data=data,
     )
 
 
