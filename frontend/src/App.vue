@@ -2,9 +2,14 @@
 import { BookOpen, Languages, MessageCircle, RotateCcw, Settings, X } from '@lucide/vue';
 import Button from 'primevue/button';
 import { RouterView, useRoute, useRouter } from 'vue-router';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 import { authenticateTelegram } from '@/shared/api/auth';
+import {
+  createNotificationStream,
+  type NotificationMessage,
+} from '@/shared/api/notifications';
+import NotificationChat from '@/shared/components/NotificationChat.vue';
 import TimeWheelPicker from '@/shared/components/TimeWheelPicker.vue';
 import TimezonePicker from '@/shared/components/TimezonePicker.vue';
 import {
@@ -28,6 +33,7 @@ const router = useRouter();
 const authStatus = ref<'loading' | 'authenticated' | 'failed'>('loading');
 const showBottomNavigation = computed(() => route.name !== 'admin');
 const userSettings = ref<UserSettings | null>(null);
+const notificationMessages = ref<Array<NotificationMessage & { id: number }>>([]);
 const languageLevels = ref<LanguageLevel[]>([]);
 const showLanguageLevelDialog = ref(false);
 const selectedLanguageLevelId = ref<number | null>(null);
@@ -47,6 +53,22 @@ const canSaveInitialSettings = computed(
 const settingsDialogTitle = computed(() =>
   settingsDialogRequired.value ? 'Выберите уровень английского' : 'Настройки',
 );
+let notificationStream: EventSource | null = null;
+let nextNotificationMessageId = 0;
+
+function connectNotificationStream() {
+  notificationStream?.close();
+  notificationMessages.value = [];
+  notificationStream = createNotificationStream((notification) => {
+    notificationMessages.value = [
+      {
+        id: ++nextNotificationMessageId,
+        ...notification,
+      },
+      ...notificationMessages.value,
+    ];
+  });
+}
 
 function getBrowserTimezone() {
   try {
@@ -141,6 +163,9 @@ async function saveSettings() {
 
 async function authorize() {
   authStatus.value = 'loading';
+  notificationStream?.close();
+  notificationStream = null;
+  notificationMessages.value = [];
 
   try {
     const isAuthenticated = await authenticateTelegram(webApp.value?.initData ?? '');
@@ -151,6 +176,7 @@ async function authorize() {
 
     const settings = await fetchAndStoreUserSettings();
     userSettings.value = settings;
+    connectNotificationStream();
 
     if (settings.selected_language_level_id === null) {
       authStatus.value = 'authenticated';
@@ -166,6 +192,7 @@ async function authorize() {
 }
 
 onMounted(authorize);
+onBeforeUnmount(() => notificationStream?.close());
 </script>
 
 <template>
@@ -183,6 +210,11 @@ onMounted(authorize);
       <main class="app-content" :class="{ 'app-content-with-navigation': showBottomNavigation }">
         <RouterView />
       </main>
+
+      <NotificationChat
+        :messages="notificationMessages"
+        :with-navigation="showBottomNavigation"
+      />
 
       <nav v-if="showBottomNavigation" class="bottom-navigation" aria-label="Основное меню">
         <RouterLink

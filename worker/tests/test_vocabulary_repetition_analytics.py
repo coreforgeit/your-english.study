@@ -58,14 +58,14 @@ class VocabularyRepetitionAnalyticsServiceTest(
 
         service._get_next_status = MagicMock(side_effect=get_next_status)
 
-        status = await service.record_answer(
+        changed_status = await service.record_answer(
             user_id=42,
             word_id=7,
             session_id='answer-session',
             is_correct=True,
         )
 
-        self.assertEqual(status, LearnedWordStatus.FAMILIAR)
+        self.assertEqual(changed_status, LearnedWordStatus.FAMILIAR)
         session.flush.assert_awaited_once_with()
         added_answer = session.add.call_args.args[0]
         self.assertIsInstance(added_answer, WordRepetitionAnswer)
@@ -98,30 +98,50 @@ class VocabularyRepetitionAnalyticsServiceTest(
         session.scalar.return_value = learned_word
         service = VocabularyRepetitionAnalyticsService(session)
 
-        status = await service.record_answer(
+        changed_status = await service.record_answer(
             user_id=42,
             word_id=7,
             session_id='answer-session',
             is_correct=False,
         )
 
-        self.assertEqual(status, LearnedWordStatus.LEARNED)
+        self.assertIsNone(changed_status)
         self.assertEqual(learned_word.review_count, 5)
         session.scalars.assert_not_awaited()
 
-    async def test_keeps_answer_when_learned_word_is_missing(self) -> None:
+    async def test_returns_none_when_status_is_unchanged(self) -> None:
         session = self.make_session()
-        session.scalar.return_value = None
+        learned_word = self.make_learned_word(LearnedWordStatus.NEW)
+        session.scalar.return_value = learned_word
+        recent_answers_result = MagicMock()
+        recent_answers_result.all.return_value = [True, False]
+        session.scalars.return_value = recent_answers_result
         service = VocabularyRepetitionAnalyticsService(session)
 
-        status = await service.record_answer(
+        changed_status = await service.record_answer(
             user_id=42,
             word_id=7,
             session_id='answer-session',
             is_correct=True,
         )
 
-        self.assertIsNone(status)
+        self.assertIsNone(changed_status)
+        self.assertEqual(learned_word.status, LearnedWordStatus.NEW)
+        self.assertEqual(learned_word.review_count, 5)
+
+    async def test_keeps_answer_when_learned_word_is_missing(self) -> None:
+        session = self.make_session()
+        session.scalar.return_value = None
+        service = VocabularyRepetitionAnalyticsService(session)
+
+        changed_status = await service.record_answer(
+            user_id=42,
+            word_id=7,
+            session_id='answer-session',
+            is_correct=True,
+        )
+
+        self.assertIsNone(changed_status)
         session.add.assert_called_once()
         session.flush.assert_awaited_once_with()
         session.scalars.assert_not_awaited()
@@ -175,16 +195,19 @@ class VocabularyRepetitionStatusTest(unittest.TestCase):
 
 
 class VocabularyRepetitionTaskTest(unittest.IsolatedAsyncioTestCase):
+    @patch('worker.analytics.vocabulary.tasks.notification_redis_client')
     @patch(
         'worker.analytics.vocabulary.tasks.VocabularyRepetitionAnalyticsService',
     )
     @patch('worker.analytics.vocabulary.tasks.async_session_factory')
-    async def test_commits_result(
+    async def test_publishes_when_status_changes(
         self,
         session_factory: MagicMock,
         service_class: MagicMock,
+        notification_redis_client: MagicMock,
     ) -> None:
         session = MagicMock(spec=AsyncSession)
+        session.scalar = AsyncMock(return_value='example')
         session.commit = AsyncMock()
         session.rollback = AsyncMock()
         session_context = MagicMock()
@@ -211,3 +234,40 @@ class VocabularyRepetitionTaskTest(unittest.IsolatedAsyncioTestCase):
         )
         session.commit.assert_awaited_once_with()
         session.rollback.assert_not_awaited()
+        notification_redis_client.publish.assert_awaited_once_with(
+            'user-notifications:42',
+            '{"type":"word_status_changed","word":"example",'
+            '"status":"familiar"}',
+        )
+
+    @patch('worker.analytics.vocabulary.tasks.notification_redis_client')
+    @patch(
+        'worker.analytics.vocabulary.tasks.VocabularyRepetitionAnalyticsService',
+    )
+    @patch('worker.analytics.vocabulary.tasks.async_session_factory')
+    async def test_does_not_publish_when_status_is_unchanged(
+        self,
+        session_factory: MagicMock,
+        service_class: MagicMock,
+        notification_redis_client: MagicMock,
+    ) -> None:
+        session = MagicMock(spec=AsyncSession)
+        session.scalar = AsyncMock()
+        session.commit = AsyncMock()
+        session.rollback = AsyncMock()
+        session_context = MagicMock()
+        session_context.__aenter__ = AsyncMock(return_value=session)
+        session_context.__aexit__ = AsyncMock(return_value=False)
+        session_factory.return_value = session_context
+        service_class.return_value.record_answer = AsyncMock(return_value=None)
+
+        await record_word_repetition.original_func(
+            user_id=42,
+            word_id=7,
+            session_id='session',
+            is_correct=False,
+        )
+
+        session.commit.assert_awaited_once_with()
+        session.scalar.assert_not_awaited()
+        notification_redis_client.publish.assert_not_awaited()

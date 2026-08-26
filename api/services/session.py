@@ -2,9 +2,11 @@ import hashlib
 import secrets
 
 from redis.asyncio import Redis
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas.session import SessionData
 from core.config import settings
+from db.models import UserSession
 from enums import RedisKey
 
 
@@ -23,8 +25,10 @@ class SessionService:
         self,
         user_id: int,
         language_level: int | None,
+        db_session: AsyncSession,
     ) -> str:
         session_id = secrets.token_urlsafe(32)
+        safe_session_id = self.get_session_id(session_id)
         session_data = SessionData(
             user_id=user_id,
             language_level=language_level,
@@ -33,6 +37,12 @@ class SessionService:
             self._key(session_id),
             session_data.model_dump_json(),
             ex=SESSION_TTL_SECONDS,
+        )
+        db_session.add(
+            UserSession(
+                session_id=safe_session_id,
+                user_id=user_id,
+            ),
         )
         return session_id
 

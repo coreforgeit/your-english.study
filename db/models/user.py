@@ -33,6 +33,10 @@ class User(Base):
         single_parent=True,
         uselist=False,
     )
+    sessions: Mapped[list['UserSession']] = relationship(
+        back_populates='user',
+        cascade='all, delete-orphan',
+    )
 
     @classmethod
     async def add_or_update(

@@ -46,6 +46,7 @@ class VocabularyRepetitionAnalyticsService:
             logger.warning(f'Аналитика повторения: изучаемое слово не найдено, user_id={user_id} word_id={word_id}')
             return None
 
+        changed_status: LearnedWordStatus | None = None
         if learned_word.status != LearnedWordStatus.LEARNED:
             recent_answers_result = await self.session.scalars(
                 sa.select(WordRepetitionAnswer.is_correct)
@@ -67,6 +68,7 @@ class VocabularyRepetitionAnalyticsService:
             if next_status != learned_word.status:
                 previous_status = learned_word.status
                 learned_word.status = next_status
+                changed_status = next_status
                 logger.info(
                     f'Статус изучаемого слова изменён: user_id={user_id} '
                     f'word_id={word_id} status={previous_status.value} '
@@ -75,7 +77,7 @@ class VocabularyRepetitionAnalyticsService:
 
         learned_word.review_count += 1
         learned_word.last_reviewed_at = datetime.now(UTC)
-        return learned_word.status
+        return changed_status
 
     @staticmethod
     def _get_next_status(

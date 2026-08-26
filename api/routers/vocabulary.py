@@ -213,7 +213,7 @@ async def answer_word(
         typo=result.check_result.typo,
         comment=result.check_result.comment,
     )
-    logger.info(f'>> {data}')
+    # logger.info(f'>> {data}')
     return ApiResponse[VocabularyWordAnswerData](data=data)
 
 

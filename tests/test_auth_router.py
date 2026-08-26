@@ -15,15 +15,18 @@ class FakeSessionService:
         self.session_data = session_data
         self.created_for: int | None = None
         self.created_language_level: int | None = None
+        self.db_session = None
         self.read_session_id: str | None = None
 
     async def create(
         self,
         user_id: int,
         language_level: int | None,
+        db_session,
     ) -> str:
         self.created_for = user_id
         self.created_language_level = language_level
+        self.db_session = db_session
         return 'test-session'
 
     async def get(self, session_id: str) -> SessionData | None:
@@ -55,6 +58,7 @@ class TelegramAuthRouterTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result)
         self.assertEqual(sessions.created_for, 524275902)
         self.assertEqual(sessions.created_language_level, 3)
+        self.assertIs(sessions.db_session, db_session)
         self.assertIn('tg_session=test-session', response.headers['set-cookie'])
         self.assertIn('HttpOnly', response.headers['set-cookie'])
 

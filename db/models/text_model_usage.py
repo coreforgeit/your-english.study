@@ -29,7 +29,9 @@ class TextModelUsage(Base):
             native_enum=False,
             create_constraint=True,
             values_callable=lambda enum_cls: [item.value for item in enum_cls],
+            length=50
         ),
+
     )
     input_tokens: Mapped[int] = mapped_column(sa.Integer)
     cached_input_tokens: Mapped[int] = mapped_column(

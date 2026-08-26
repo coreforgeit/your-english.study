@@ -51,6 +51,7 @@ async def auth_tg(
         session_id = await sessions.create(
             user_id=user_id,
             language_level=language_level,
+            db_session=session,
         )
 
     response.set_cookie(

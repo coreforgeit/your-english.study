@@ -1,17 +1,19 @@
 import hashlib
 import json
 import unittest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 from api.services.session import SESSION_TTL_SECONDS, SessionService
+from db.models import UserSession
 
 
 class SessionServiceTest(unittest.IsolatedAsyncioTestCase):
     async def test_create_stores_hashed_session_key(self):
         redis = AsyncMock()
+        db_session = Mock()
         sessions = SessionService(redis)
 
-        session_id = await sessions.create(42, 3)
+        session_id = await sessions.create(42, 3, db_session)
 
         expected_hash = hashlib.sha256(session_id.encode()).hexdigest()
         redis.set.assert_awaited_once_with(
@@ -23,6 +25,11 @@ class SessionServiceTest(unittest.IsolatedAsyncioTestCase):
             ex=SESSION_TTL_SECONDS,
         )
         self.assertNotIn(session_id, redis.set.await_args.args[0])
+
+        saved_session = db_session.add.call_args.args[0]
+        self.assertIsInstance(saved_session, UserSession)
+        self.assertEqual(saved_session.session_id, expected_hash)
+        self.assertEqual(saved_session.user_id, 42)
 
     async def test_get_user_renews_session_ttl(self):
         redis = AsyncMock()

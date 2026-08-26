@@ -3,6 +3,7 @@ from db.models.language_level import LanguageLevel
 from db.models.learned_word import LearnedWord
 from db.models.text_model_usage import TextModelUsage
 from db.models.user import User
+from db.models.user_session import UserSession
 from db.models.user_settings import UserSettings
 from db.models.word_en import WordEn
 from db.models.word_en_synonym import WordEnSynonym
@@ -11,6 +12,7 @@ from db.models.word_ru import WordRu
 
 __all__ = (
     'User',
+    'UserSession',
     'UserSettings',
     'LearnedWord',
     'AnswerError',
