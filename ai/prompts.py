@@ -91,6 +91,10 @@ Also use correct_with_minor_issue for a small typo, minor grammar issue, registe
 context-dependent imprecision. For every correct_with_minor_issue result, comment must be a short,
 non-empty explanation in Russian. Return comment as null only for correct and incorrect. Do not
 include any other explanation.
+
+Return correct_answers as a JSON list containing one to three common, natural correct answers in
+the target language. Keep the answers unique and do not combine several variants into one string
+with commas, semicolons, or slashes.
 """.strip()
 
 

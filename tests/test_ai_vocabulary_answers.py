@@ -16,6 +16,7 @@ class AIVocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
     async def test_uses_gpt_4o_mini_structured_output(self):
         parsed_result = VocabularyAnswerCheckResult(
             verdict=VocabularyAnswerVerdict.CORRECT,
+            correct_answers=['задание', 'задача'],
             comment=None,
         )
         usage = Mock(

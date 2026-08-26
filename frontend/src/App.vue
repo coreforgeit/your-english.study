@@ -56,6 +56,7 @@ function getBrowserTimezone() {
   }
 }
 
+
 async function showSettingsDialog(settings: UserSettings, required: boolean) {
   settingsDialogRequired.value = required;
   selectedLanguageLevelId.value = settings.selected_language_level_id;

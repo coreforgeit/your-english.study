@@ -62,7 +62,7 @@ type PracticeState = {
   answerSkipped: boolean;
   answerTypo: AnswerTypo | null;
   submittedAnswer: string;
-  correctAnswer: string;
+  correctAnswers: string[];
   answerComment: string | null;
   recordedAudio: Blob | null;
 };
@@ -100,7 +100,7 @@ const repeatSessionStateSchema = z.object({
   answerSkipped: z.boolean().default(false),
   answerTypo: answerTypoStorageSchema.nullable(),
   submittedAnswer: z.string(),
-  correctAnswer: z.string(),
+  correctAnswers: z.array(z.string()).default([]),
   answerComment: z.string().nullable().default(null),
 });
 
@@ -119,7 +119,7 @@ function createPracticeState(displayDirection: DisplayDirection): PracticeState 
     answerSkipped: false,
     answerTypo: null,
     submittedAnswer: '',
-    correctAnswer: '',
+    correctAnswers: [],
     answerComment: null,
     recordedAudio: null,
   };
@@ -221,7 +221,7 @@ function saveRepeatSessionState(state: PracticeState) {
         answerSkipped: state.answerSkipped,
         answerTypo: state.answerTypo,
         submittedAnswer: state.submittedAnswer,
-        correctAnswer: state.correctAnswer,
+        correctAnswers: state.correctAnswers,
         answerComment: state.answerComment,
       }),
     );
@@ -361,13 +361,22 @@ const nextButtonText = computed(() => {
 const submittedAnswerParts = computed(() =>
   buildAnswerParts(currentState.value.submittedAnswer, currentState.value.answerTypo, 'submitted'),
 );
-const displayedCorrectAnswer = computed(() => currentState.value.correctAnswer || answerBlock.value.text);
-const correctAnswerParts = computed(() => buildAnswerParts(displayedCorrectAnswer.value, currentState.value.answerTypo, 'correct'));
-const skippedCorrectAnswers = computed(() =>
-  displayedCorrectAnswer.value
-    .split(/[,;/]+/)
-    .map((answer) => answer.trim())
-    .filter(Boolean),
+const displayedCorrectAnswers = computed(() => {
+  if (currentState.value.correctAnswers.length > 0) {
+    return currentState.value.correctAnswers;
+  }
+
+  const word = currentState.value.word;
+  if (!word) {
+    return [];
+  }
+
+  return currentState.value.displayDirection === 'en-ru' ? word.translations : [word.word];
+});
+const correctAnswerPartLines = computed(() =>
+  displayedCorrectAnswers.value.map((answer, index) =>
+    buildAnswerParts(answer, index === 0 ? currentState.value.answerTypo : null, `correct-${index}`),
+  ),
 );
 function getRequestBody(mode: PracticeMode, intervalRepetitionWordId: number | null) {
   const body: { word_id?: number } = {};
@@ -429,7 +438,7 @@ function getAnswerTypo(data: unknown): AnswerTypo | null {
   };
 }
 
-function buildAnswerParts(text: string, typo: AnswerTypo | null, line: 'submitted' | 'correct'): AnswerCharPart[] {
+function buildAnswerParts(text: string, typo: AnswerTypo | null, line: string): AnswerCharPart[] {
   const chars = Array.from(text);
   const parts = chars.map((value, index) => ({
     key: `${line}-${index}-${value}`,
@@ -687,7 +696,7 @@ async function requestWord(options?: { reloadIntervalRepetitions?: boolean }) {
     targetState.answerSkipped = false;
     targetState.answerTypo = null;
     targetState.submittedAnswer = '';
-    targetState.correctAnswer = '';
+    targetState.correctAnswers = [];
     targetState.answerComment = null;
     targetState.answerText = '';
     targetState.recordedAudio = null;
@@ -746,16 +755,22 @@ function getSubmittedAnswerFromResponse(data: unknown, fallback: string) {
   return fallback;
 }
 
-function getCorrectAnswerFromResponse(data: unknown, fallback: string) {
+function getCorrectAnswersFromResponse(data: unknown, fallback: string[]) {
   const responseData = getResponseData(data);
 
   if (
     responseData &&
     typeof responseData === 'object' &&
     'correct_answer' in responseData &&
-    typeof responseData.correct_answer === 'string'
+    Array.isArray(responseData.correct_answer)
   ) {
-    return responseData.correct_answer;
+    const correctAnswers = responseData.correct_answer
+      .filter((answer): answer is string => typeof answer === 'string' && answer.trim().length > 0)
+      .slice(0, 3);
+
+    if (correctAnswers.length > 0) {
+      return correctAnswers;
+    }
   }
 
   return fallback;
@@ -964,7 +979,13 @@ async function submitAnswer(
     targetState.answerSkipped = getAnswerSkipped(data);
     targetState.answerTypo = getAnswerTypo(data);
     targetState.submittedAnswer = getSubmittedAnswerFromResponse(data, skip ? '' : textAnswer);
-    targetState.correctAnswer = getCorrectAnswerFromResponse(data, answerBlock.value.text);
+    const fallbackCorrectAnswers =
+      targetState.displayDirection === 'en-ru'
+        ? targetState.word?.translations ?? []
+        : targetState.word?.word
+          ? [targetState.word.word]
+          : [];
+    targetState.correctAnswers = getCorrectAnswersFromResponse(data, fallbackCorrectAnswers);
     targetState.answerComment = getAnswerCommentFromResponse(data);
     targetState.answerText = '';
     targetState.recordedAudio = null;
@@ -1331,9 +1352,7 @@ onUnmounted(() => {
       <WordCard
         class="word-stage-answer"
         :language="hasCurrentWord ? answerLanguage : null"
-        :text="hasCurrentWord && currentState.showAnswer ? displayedCorrectAnswer : null"
-        :text-lines="currentState.showAnswer && currentState.answerSkipped ? skippedCorrectAnswers : []"
-        :text-parts="currentState.showAnswer && !currentState.answerSkipped ? correctAnswerParts : []"
+        :text-part-lines="currentState.showAnswer ? correctAnswerPartLines : []"
         :submitted-parts="currentState.showAnswer && !currentState.answerSkipped ? submittedAnswerParts : []"
         :pronunciation="
           currentState.showAnswer && answerTone === 'english' ? currentWord?.pronunciation : null

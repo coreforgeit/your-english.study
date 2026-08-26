@@ -36,4 +36,5 @@ class VocabularyAnswerCheckResult(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     verdict: VocabularyAnswerVerdict
+    correct_answers: list[str] = Field(min_length=1, max_length=3)
     comment: str | None = Field(default=None, max_length=200)

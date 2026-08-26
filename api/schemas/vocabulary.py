@@ -65,7 +65,7 @@ class AnswerTypo(BaseModel):
 class VocabularyWordAnswerData(BaseModel):
     success: bool
     answer: str
-    correct_answer: str | None = None
+    correct_answer: list[str] = Field(default_factory=list, max_length=3)
     is_correct: bool | None = None
     skip: bool = False
     has_typo: bool = False

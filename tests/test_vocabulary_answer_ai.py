@@ -17,6 +17,7 @@ class VocabularyAnswerAICheckTest(unittest.IsolatedAsyncioTestCase):
         )
         ai_result = VocabularyAnswerCheckResult(
             verdict=VocabularyAnswerVerdict.CORRECT_WITH_MINOR_ISSUE,
+            correct_answers=['задание', 'задача'],
             comment='Небольшая опечатка в окончании.',
         )
 
@@ -34,7 +35,7 @@ class VocabularyAnswerAICheckTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.is_correct)
         self.assertFalse(result.has_typo)
         self.assertIsNone(result.typo)
-        self.assertEqual(result.correct_answer, 'задание')
+        self.assertEqual(result.correct_answer, ['задание', 'задача'])
         self.assertEqual(result.comment, 'Небольшая опечатка в окончании.')
         ai_check.assert_awaited_once_with(
             source_text='assignment',
@@ -53,6 +54,7 @@ class VocabularyAnswerAICheckTest(unittest.IsolatedAsyncioTestCase):
         )
         ai_result = VocabularyAnswerCheckResult(
             verdict=VocabularyAnswerVerdict.INCORRECT,
+            correct_answers=['assignment', 'task'],
             comment=None,
         )
 
@@ -69,7 +71,7 @@ class VocabularyAnswerAICheckTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(result)
         self.assertFalse(result.is_correct)
         self.assertFalse(result.has_typo)
-        self.assertEqual(result.correct_answer, 'assignment')
+        self.assertEqual(result.correct_answer, ['assignment', 'task'])
         self.assertIsNone(result.comment)
         ai_check.assert_awaited_once_with(
             source_text='задание',

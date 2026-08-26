@@ -10,6 +10,7 @@ from api.services.vocabulary_answer import (
     AudioAnswerFile,
     VocabularyAnswerService,
 )
+from db.models import WordEn, WordRu
 from enums import AnswerType
 
 
@@ -33,6 +34,29 @@ class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(payload.skip)
 
+    def test_local_incorrect_answer_returns_up_to_three_variants(self):
+        service = VocabularyAnswerService(AsyncMock())
+        word = WordEn(
+            word='close',
+            translations=[
+                WordRu(word='закрывать'),
+                WordRu(word='закрыть'),
+                WordRu(word='близкий'),
+                WordRu(word='рядом'),
+            ],
+        )
+
+        result = service._check_translation_answer(
+            answer='ошибка',
+            word=word,
+        )
+
+        self.assertFalse(result.is_correct)
+        self.assertEqual(
+            result.correct_answer,
+            ['закрывать', 'закрыть', 'близкий'],
+        )
+
     async def test_skip_returns_correct_answer_without_checking(self):
         parsed_request = make_parsed_request(
             {
@@ -44,8 +68,8 @@ class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
         )
         current_user = CurrentTelegramUser(id=42, session_id='session')
         answer_service = VocabularyAnswerService(AsyncMock())
-        answer_service.get_correct_answer = AsyncMock(
-            return_value='правильный ответ',
+        answer_service.get_correct_answers = AsyncMock(
+            return_value=['правильный ответ', 'верный ответ'],
         )
         answer_service.check_text_answer = AsyncMock()
         enqueue_repetition = AsyncMock()
@@ -72,7 +96,7 @@ class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
                 'data': {
                     'success': True,
                     'answer': '',
-                    'correct_answer': 'правильный ответ',
+                    'correct_answer': ['правильный ответ', 'верный ответ'],
                     'is_correct': False,
                     'skip': True,
                     'has_typo': False,
@@ -81,7 +105,7 @@ class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
                 },
             },
         )
-        answer_service.get_correct_answer.assert_awaited_once()
+        answer_service.get_correct_answers.assert_awaited_once()
         answer_service.check_text_answer.assert_not_awaited()
         enqueue_repetition.assert_awaited_once_with(
             user_id=42,
@@ -109,7 +133,7 @@ class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
                 'expected': None,
                 'actual': 'т',
             },
-            correct_answer='ответ',
+            correct_answer=['ответ', 'решение'],
         )
         answer_service = VocabularyAnswerService(AsyncMock())
         answer_service.check_text_answer = AsyncMock(
@@ -165,11 +189,11 @@ class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
         current_user = CurrentTelegramUser(id=42, session_id='session')
         local_check_result = AnswerCheckResult(
             is_correct=False,
-            correct_answer='закрыто',
+            correct_answer=['закрыто', 'закрыть'],
         )
         ai_check_result = AnswerCheckResult(
             is_correct=True,
-            correct_answer='закрыто',
+            correct_answer=['близко', 'рядом'],
             comment='У слова close несколько значений; «близко» — корректный перевод.',
         )
         answer_service = VocabularyAnswerService(AsyncMock())

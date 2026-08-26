@@ -1,7 +1,7 @@
 import logging
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from time import perf_counter
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +16,7 @@ from enums import AnswerLanguage, AnswerType, VocabularyAnswerVerdict
 
 
 logger = logging.getLogger(__name__)
+MAX_CORRECT_ANSWERS = 3
 
 
 class VocabularyAnswerRequiredError(Exception):
@@ -46,7 +47,7 @@ class AnswerCheckResult:
     is_correct: bool
     has_typo: bool = False
     typo: dict[str, int | str | None] | None = None
-    correct_answer: str | None = None
+    correct_answer: list[str] = field(default_factory=list)
     comment: str | None = None
 
 
@@ -114,16 +115,16 @@ class VocabularyAnswerService:
         """
         Извлекает из базы правильный ответ, при пропуске
         """
-        correct_answer = await self.get_correct_answer(
+        correct_answers = await self.get_correct_answers(
             word_id=payload.word_id,
             answer_language=payload.answer_language,
         )
-        if correct_answer is None:
+        if correct_answers is None:
             raise VocabularyAnswerWordNotFoundError
 
         return AnswerCheckResult(
             is_correct=False,
-            correct_answer=correct_answer,
+            correct_answer=correct_answers,
         )
 
     async def _check_answer(
@@ -216,11 +217,9 @@ class VocabularyAnswerService:
         if answer_language == AnswerLanguage.EN:
             source_text = word.translation
             source_language = AnswerLanguage.RU
-            correct_answer = word.word
         else:
             source_text = word.word
             source_language = AnswerLanguage.EN
-            correct_answer = word.translation
 
         ai_result = await check_vocabulary_answer(
             source_text=source_text,
@@ -231,7 +230,9 @@ class VocabularyAnswerService:
         )
         check_result = AnswerCheckResult(
             is_correct=ai_result.verdict != VocabularyAnswerVerdict.INCORRECT,
-            correct_answer=correct_answer,
+            correct_answer=self._limit_correct_answers(
+                ai_result.correct_answers,
+            ),
             comment=ai_result.comment.strip() if ai_result.comment else None,
         )
         logger.info(
@@ -241,23 +242,33 @@ class VocabularyAnswerService:
         )
         return check_result
 
-    async def get_correct_answer(
+    async def get_correct_answers(
         self,
         word_id: int,
         answer_language: AnswerLanguage,
-    ) -> str | None:
+    ) -> list[str] | None:
         word = await self.session.get(
             WordEn,
             word_id,
-            options=(selectinload(WordEn.translations),),
+            options=(
+                selectinload(WordEn.translations),
+                selectinload(WordEn.synonym_links).selectinload(
+                    WordEnSynonym.synonym_word_en,
+                ),
+                selectinload(WordEn.synonym_of_links).selectinload(
+                    WordEnSynonym.word_en,
+                ),
+            ),
         )
         if word is None:
             return None
 
         if answer_language == AnswerLanguage.EN:
-            return word.word
+            correct_answers = self._get_english_answer_candidates(word)
+        else:
+            correct_answers = self._get_translation_answer_candidates(word)
 
-        return word.translation
+        return self._limit_correct_answers(correct_answers)
 
     def _compare_answer(
         self,
@@ -387,7 +398,8 @@ class VocabularyAnswerService:
         answer: str,
         word: WordEn,
     ) -> AnswerCheckResult:
-        for correct_answer in self._get_english_answer_candidates(word):
+        correct_answers = self._get_english_answer_candidates(word)
+        for correct_answer in correct_answers:
             check_result = self._compare_answer(
                 answer=answer,
                 correct_answer=correct_answer,
@@ -397,12 +409,14 @@ class VocabularyAnswerService:
                     is_correct=check_result.is_correct,
                     has_typo=check_result.has_typo,
                     typo=check_result.typo,
-                    correct_answer=correct_answer,
+                    correct_answer=self._limit_correct_answers(
+                        [correct_answer, *correct_answers],
+                    ),
                 )
 
         return AnswerCheckResult(
             is_correct=False,
-            correct_answer=word.word,
+            correct_answer=self._limit_correct_answers(correct_answers),
         )
 
     @staticmethod
@@ -428,23 +442,47 @@ class VocabularyAnswerService:
         answer: str,
         word: WordEn,
     ) -> AnswerCheckResult:
-        for translation in word.translations:
+        correct_answers = self._get_translation_answer_candidates(word)
+        for correct_answer in correct_answers:
             check_result = self._compare_answer(
                 answer=answer,
-                correct_answer=translation.word,
+                correct_answer=correct_answer,
             )
             if check_result.is_correct:
                 return AnswerCheckResult(
                     is_correct=check_result.is_correct,
                     has_typo=check_result.has_typo,
                     typo=check_result.typo,
-                    correct_answer=translation.word,
+                    correct_answer=self._limit_correct_answers(
+                        [correct_answer, *correct_answers],
+                    ),
                 )
 
         return AnswerCheckResult(
             is_correct=False,
-            correct_answer=word.translation,
+            correct_answer=self._limit_correct_answers(correct_answers),
         )
+
+    @staticmethod
+    def _get_translation_answer_candidates(word: WordEn) -> list[str]:
+        return [translation.word for translation in word.translations]
+
+    @staticmethod
+    def _limit_correct_answers(correct_answers: list[str]) -> list[str]:
+        unique_answers: list[str] = []
+        normalized_answers: set[str] = set()
+        for answer in correct_answers:
+            clean_answer = answer.strip()
+            normalized_answer = clean_answer.casefold()
+            if not clean_answer or normalized_answer in normalized_answers:
+                continue
+
+            normalized_answers.add(normalized_answer)
+            unique_answers.append(clean_answer)
+            if len(unique_answers) == MAX_CORRECT_ANSWERS:
+                break
+
+        return unique_answers
 
     async def _resolve_answer(
         self,

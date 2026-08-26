@@ -203,18 +203,18 @@ async def answer_word(
             f'word_id={parsed_request.payload.word_id}',
         )
 
-    return ApiResponse[VocabularyWordAnswerData](
-        data=VocabularyWordAnswerData(
-            success=True,
-            answer=result.answer,
-            correct_answer=result.check_result.correct_answer,
-            is_correct=result.check_result.is_correct,
-            skip=result.skip,
-            has_typo=result.check_result.has_typo,
-            typo=result.check_result.typo,
-            comment=result.check_result.comment,
-        ),
+    data = VocabularyWordAnswerData(
+        success=True,
+        answer=result.answer,
+        correct_answer=result.check_result.correct_answer,
+        is_correct=result.check_result.is_correct,
+        skip=result.skip,
+        has_typo=result.check_result.has_typo,
+        typo=result.check_result.typo,
+        comment=result.check_result.comment,
     )
+    logger.info(f'>> {data}')
+    return ApiResponse[VocabularyWordAnswerData](data=data)
 
 
 @router.post(

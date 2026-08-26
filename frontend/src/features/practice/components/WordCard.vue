@@ -20,6 +20,7 @@ const props = withDefaults(
     text?: string | null;
     textLines?: string[];
     textParts?: TextPart[];
+    textPartLines?: TextPart[][];
     submittedParts?: TextPart[];
     pronunciation?: string | null;
     translation?: string | null;
@@ -37,6 +38,7 @@ const props = withDefaults(
     text: null,
     textLines: () => [],
     textParts: () => [],
+    textPartLines: () => [],
     submittedParts: () => [],
     pronunciation: null,
     translation: null,
@@ -193,6 +195,7 @@ watch(
     props.text,
     props.textLines,
     props.textParts,
+    props.textPartLines,
     props.submittedParts,
     props.pronunciation,
     props.translation,
@@ -232,10 +235,26 @@ watch(() => props.audioUrl, resetAudioState);
         </span>
       </p>
 
-      <div v-if="text || textLines.length || textParts.length" class="word-card-primary-row">
+      <div v-if="text || textLines.length || textParts.length || textPartLines.length" class="word-card-primary-row">
         <div class="word-card-primary-content">
           <strong class="word-card-text" data-fit-text>
-            <template v-if="textLines.length">
+            <template v-if="textPartLines.length">
+              <span
+                v-for="(line, lineIndex) in textPartLines"
+                :key="`parts-line-${lineIndex}`"
+                class="word-card-text-line"
+              >
+                <span
+                  v-for="part in line"
+                  :key="part.key"
+                  class="word-card-char"
+                  :class="`word-card-char-${part.state}`"
+                >
+                  {{ part.value }}
+                </span>
+              </span>
+            </template>
+            <template v-else-if="textLines.length">
               <span v-for="(line, index) in textLines" :key="`${line}-${index}`" class="word-card-text-line">
                 {{ line }}
               </span>
