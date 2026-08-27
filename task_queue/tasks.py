@@ -14,6 +14,11 @@ record_word_repetition = AsyncKicker(
     broker,
     {},
 )
+record_learned_word = AsyncKicker(
+    WorkerTaskName.RECORD_LEARNED_WORD,
+    broker,
+    {},
+)
 review_word = AsyncKicker(
     WorkerTaskName.REVIEW_WORD,
     broker,

@@ -30,7 +30,11 @@ from api.services.vocabulary_answer import (
 from db.models import WordEn
 from enums import WordStatus
 from services import VocabularyRepetitionService
-from task_queue.tasks import record_word_repetition, review_word
+from task_queue.tasks import (
+    record_learned_word,
+    record_word_repetition,
+    review_word,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -86,28 +90,29 @@ async def learn_word(
     current_user: CurrentTelegramUser = Depends(get_current_telegram_user),
     session: AsyncSession = Depends(get_session),
 ) -> ApiResponse[WordRead]:
-    logger.info('Learn word request: user_id=%s', current_user.id)
-    # logger.info(f'payload: {payload}')
+    logger.info(
+        f'Запрошено новое слово: user_id={current_user.id} '
+        f'уровень={current_user.language_level}',
+    )
     service = VocabularyService(session)
     word = await service.get_new_word_for_user(
         user_id=current_user.id,
-        session_id=current_user.session_id,
         language_level_grade=current_user.language_level,
     )
     if word is None:
-        logger.info('Learn word response failed: no new word found user_id=%s', current_user.id)
+        logger.info(
+            f'Новое слово не найдено: user_id={current_user.id}',
+        )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail='Word not found',
         )
 
-    if not word.is_reviewed:
-        await review_word.kiq(
-            word_id=word.id,
-            model=WordReviewRequest().model,
-            session_id=current_user.session_id,
-        )
-
+    await record_learned_word.kiq(
+        user_id=current_user.id,
+        word_id=word.id,
+        session_id=current_user.session_id,
+    )
 
     return ApiResponse[WordRead](data=word)
 

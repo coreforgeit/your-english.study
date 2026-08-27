@@ -1,6 +1,7 @@
 import unittest
 
 from task_queue.tasks import (
+    record_learned_word as record_learned_word_message,
     record_word_repetition as record_word_repetition_message,
     review_word as review_word_message,
     save_text_model_usage as save_text_model_usage_message,
@@ -9,7 +10,7 @@ from task_queue.tasks import (
 from worker.analytics.vocabulary.tasks import record_word_repetition
 from worker.reminders.tasks import send_daily_word_learning_reminder
 from worker.usage.tasks import save_text_model_usage
-from worker.vocabulary.tasks import review_word
+from worker.vocabulary.tasks import record_learned_word, review_word
 
 
 class WorkerTaskContractTest(unittest.TestCase):
@@ -17,6 +18,7 @@ class WorkerTaskContractTest(unittest.TestCase):
         task_pairs = (
             (reminder_message, send_daily_word_learning_reminder),
             (record_word_repetition_message, record_word_repetition),
+            (record_learned_word_message, record_learned_word),
             (review_word_message, review_word),
             (save_text_model_usage_message, save_text_model_usage),
         )

@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     vocabulary_repetition_intervals: list[int] = Field(
         default_factory=lambda: [0, 1, 3, 7, 14],
     )
+    vocabulary_learning_grade_offset: int = Field(default=1, ge=0)
     open_ai_api_key: str = ''
 
     model_config = SettingsConfigDict(

@@ -2,11 +2,11 @@ from dataclasses import dataclass
 import logging
 
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql as psql
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from api.schemas.vocabulary import VocabularyRepeatWordRequest
+from core.config import settings
 from db.models import LanguageLevel, LearnedWord, WordEn
 from enums import AnswerLanguage, LearnedWordStatus, WordStatus
 
@@ -91,10 +91,12 @@ class VocabularyService:
     async def get_new_word_for_user(
         self,
         user_id: int,
-        session_id: str,
         language_level_grade: int | None,
     ) -> WordEn | None:
-        logger.info(f'language_level_grade: {language_level_grade}')
+        logger.info(
+            f'Выбираем новое слово для пользователя: '
+            f'user_id={user_id} уровень={language_level_grade}',
+        )
         learned_words_stmt = sa.select(LearnedWord.word_id).where(
             LearnedWord.user_id == user_id,
         )
@@ -105,19 +107,6 @@ class VocabularyService:
         if word is None:
             return None
 
-        stmt = (
-            psql.insert(LearnedWord)
-            .values(
-                user_id=user_id,
-                word_id=word.id,
-                session_id=session_id,
-            )
-            .on_conflict_do_nothing(
-                index_elements=[LearnedWord.user_id, LearnedWord.word_id],
-            )
-        )
-        await self.session.execute(stmt)
-        logger.info(f'Выученное слово сохранено: user_id={user_id}, word_id={word.id}')
         return word
 
     async def _select_word(
@@ -134,7 +123,11 @@ class VocabularyService:
             .where(WordEn.status == WordStatus.ALLOWED)
         )
         if language_level_grade is not None:
-            maximum_grade = min(language_level_grade + 1, 6)
+            maximum_grade = min(
+                language_level_grade
+                + settings.vocabulary_learning_grade_offset,
+                6,
+            )
             stmt = stmt.join(WordEn.language_level).where(
                 LanguageLevel.grade <= maximum_grade,
             )
@@ -144,9 +137,14 @@ class VocabularyService:
 
         stmt = stmt.order_by(sa.func.random()).limit(1)
 
-        logger.info('Выбираем слово: language_level_grade=%s', language_level_grade)
+        logger.info(
+            f'Выполняем выборку слова: уровень={language_level_grade}',
+        )
         result = await self.session.execute(stmt)
         word = result.scalar_one_or_none()
-        logger.info(f'Выбрано слово: word_id={getattr(word, "id", None)} level={getattr(word, "level_id", None)}')
+        logger.info(
+            f'Выбрано слово: word_id={getattr(word, "id", None)} '
+            f'level_id={getattr(word, "level_id", None)}',
+        )
         return word
 
