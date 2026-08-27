@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { BookOpen, Languages, MessageCircle, RotateCcw, Settings, X } from '@lucide/vue';
 import Button from 'primevue/button';
-import { RouterView, useRoute, useRouter } from 'vue-router';
+import { RouterView, useRoute } from 'vue-router';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
+import { useLaunchScenario } from '@/app/launch/useLaunchScenario';
 import { authenticateTelegram } from '@/shared/api/auth';
 import {
   createNotificationStream,
@@ -12,10 +13,6 @@ import {
 import NotificationChat from '@/shared/components/NotificationChat.vue';
 import TimeWheelPicker from '@/shared/components/TimeWheelPicker.vue';
 import TimezonePicker from '@/shared/components/TimezonePicker.vue';
-import {
-  APP_LAUNCH_AUTO_START_VALUE,
-  AppLaunchQuery,
-} from '@/shared/navigation/appLaunch';
 import {
   fetchAndStoreUserSettings,
   fetchLanguageLevels,
@@ -28,7 +25,7 @@ import { useTelegramApp } from '@/shared/telegram/useTelegramApp';
 
 const { colorScheme, webApp } = useTelegramApp();
 const route = useRoute();
-const router = useRouter();
+const { runAfterPrerequisites } = useLaunchScenario();
 
 const authStatus = ref<'loading' | 'authenticated' | 'failed'>('loading');
 const showBottomNavigation = computed(() => route.name !== 'admin');
@@ -44,9 +41,6 @@ const settingsDialogLoading = ref(false);
 const settingsDialogSaving = ref(false);
 const settingsDialogError = ref<string | null>(null);
 const settingsDialogRequired = ref(false);
-const pendingRepeatLaunch = ref(
-  route.query[AppLaunchQuery.MODE] === 'repeat',
-);
 const canSaveInitialSettings = computed(
   () => selectedLanguageLevelId.value !== null && !settingsDialogLoading.value && !settingsDialogSaving.value,
 );
@@ -100,20 +94,6 @@ async function showSettingsDialog(settings: UserSettings, required: boolean) {
   }
 }
 
-async function openPendingLaunchMode() {
-  if (!pendingRepeatLaunch.value) {
-    return;
-  }
-
-  await router.replace({
-    name: 'repeat',
-    query: {
-      [AppLaunchQuery.AUTO_START]: APP_LAUNCH_AUTO_START_VALUE,
-    },
-  });
-  pendingRepeatLaunch.value = false;
-}
-
 async function openSettingsDialog() {
   if (showLanguageLevelDialog.value) {
     return;
@@ -153,7 +133,7 @@ async function saveSettings() {
     });
     showLanguageLevelDialog.value = false;
     settingsDialogRequired.value = false;
-    await openPendingLaunchMode();
+    await runAfterPrerequisites();
   } catch {
     settingsDialogError.value = 'Не удалось сохранить настройки. Попробуйте ещё раз.';
   } finally {
@@ -184,7 +164,7 @@ async function authorize() {
       return;
     }
 
-    await openPendingLaunchMode();
+    await runAfterPrerequisites();
     authStatus.value = 'authenticated';
   } catch {
     authStatus.value = 'failed';

@@ -1,30 +1,22 @@
 import { ref } from 'vue';
 import { z } from 'zod';
 
-import { authorizedFetch, BACKEND_URL } from '@/shared/api/client';
+import { fetchIntervalRepetitionWordIds } from '@/features/practice/api/practiceApi';
 
 const WORD_IDS_STORAGE_KEY = 'practice:interval-repetition-word-ids';
 const REQUESTED_IN_SESSION_STORAGE_KEY = 'practice:interval-repetitions-requested';
-
-const intervalRepetitionsResponseSchema = z.object({
-  data: z.array(z.number().int().positive()),
-});
+const storedWordIdsSchema = z.array(z.number().int().positive());
 
 function readStoredWordIds(): number[] {
   try {
     const storedValue = localStorage.getItem(WORD_IDS_STORAGE_KEY);
-    if (!storedValue) {
-      return [];
-    }
-
-    return intervalRepetitionsResponseSchema.shape.data.parse(JSON.parse(storedValue));
+    return storedValue ? storedWordIdsSchema.parse(JSON.parse(storedValue)) : [];
   } catch {
     try {
       localStorage.removeItem(WORD_IDS_STORAGE_KEY);
     } catch {
-      // Ignore cleanup failures when browser storage is unavailable.
+      // Хранилище может быть недоступно внутри некоторых WebView.
     }
-
     return [];
   }
 }
@@ -46,7 +38,7 @@ export function useIntervalRepetitionQueue() {
     try {
       localStorage.setItem(WORD_IDS_STORAGE_KEY, JSON.stringify(wordIds.value));
     } catch {
-      // The queue remains available in memory if browser storage is unavailable.
+      // Очередь продолжит работать в памяти до закрытия приложения.
     }
   }
 
@@ -57,11 +49,10 @@ export function useIntervalRepetitionQueue() {
 
   function markAsRequested() {
     hasRequested.value = true;
-
     try {
       sessionStorage.setItem(REQUESTED_IN_SESSION_STORAGE_KEY, 'true');
     } catch {
-      // The request flag remains available in memory if browser storage is unavailable.
+      // Флаг останется доступен в памяти текущей вкладки.
     }
   }
 
@@ -74,22 +65,10 @@ export function useIntervalRepetitionQueue() {
       return;
     }
 
-    markAsRequested();
-    replaceWordIds([]);
-
     loadPromise = (async () => {
-      const response = await authorizedFetch(
-        `${BACKEND_URL}/api/telegram-app/words/interval-repetitions`,
-      );
-
-      if (!response.ok) {
-        throw new Error(
-          `Не удалось загрузить слова для интервального повторения: ${response.status}`,
-        );
-      }
-
-      const { data } = intervalRepetitionsResponseSchema.parse(await response.json());
-      replaceWordIds(data);
+      const nextWordIds = await fetchIntervalRepetitionWordIds();
+      replaceWordIds(nextWordIds);
+      markAsRequested();
     })();
 
     try {
@@ -97,14 +76,6 @@ export function useIntervalRepetitionQueue() {
     } finally {
       loadPromise = null;
     }
-  }
-
-  async function loadOnce() {
-    await load();
-  }
-
-  async function reload() {
-    await load(true);
   }
 
   function getRandomWordId(): number | null {
@@ -118,18 +89,15 @@ export function useIntervalRepetitionQueue() {
 
   function removeWordId(wordId: number) {
     const nextWordIds = wordIds.value.filter((storedWordId) => storedWordId !== wordId);
-    if (nextWordIds.length === wordIds.value.length) {
-      return;
+    if (nextWordIds.length !== wordIds.value.length) {
+      replaceWordIds(nextWordIds);
     }
-
-    wordIds.value = nextWordIds;
-    saveWordIds();
   }
 
   return {
     getRandomWordId,
-    loadOnce,
-    reload,
+    loadOnce: () => load(),
+    reload: () => load(true),
     removeWordId,
   };
 }

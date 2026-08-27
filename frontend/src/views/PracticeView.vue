@@ -4,9 +4,16 @@ import { computed, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { z } from 'zod';
 
+import {
+  fetchLearnWord,
+  PracticeApiError,
+} from '@/features/practice/api/practiceApi';
 import AudioWaveform from '@/features/practice/components/AudioWaveform.vue';
 import WordCard from '@/features/practice/components/WordCard.vue';
-import { useIntervalRepetitionQueue } from '@/features/practice/useIntervalRepetitionQueue';
+import {
+  EmptyIntervalRepetitionQueueError,
+  useRepeatSession,
+} from '@/features/practice/composables/useRepeatSession';
 import { authorizedFetch, BACKEND_URL } from '@/shared/api/client';
 import {
   APP_LAUNCH_AUTO_START_VALUE,
@@ -18,6 +25,10 @@ type DisplayDirection = 'ru-en' | 'en-ru';
 type AnswerStatus = 'correct' | 'incorrect' | null;
 type TypoType = 'replace' | 'missing' | 'extra';
 type VoiceAnswerDialogState = 'hidden' | 'checking' | 'error';
+
+const props = defineProps<{
+  mode: PracticeMode;
+}>();
 
 type AnswerTypo = {
   index: number;
@@ -127,7 +138,7 @@ function createPracticeState(displayDirection: DisplayDirection): PracticeState 
 
 const route = useRoute();
 const router = useRouter();
-const selectedMode = ref<PracticeMode>(route.name === 'learn' ? 'learn' : 'repeat');
+const selectedMode = ref<PracticeMode>(props.mode);
 const isLoading = ref(false);
 const isSendingAnswer = ref(false);
 const manualReviewLoadingWordId = ref<number | null>(null);
@@ -136,7 +147,7 @@ const isRecording = ref(false);
 const requestError = ref<string | null>(null);
 const answerError = ref<string | null>(null);
 const errorMessage = ref<string | null>(null);
-// Temporary UI diagnostics for voice answer failures.
+// Временный диагностический отчёт для ошибок голосового ответа.
 const answerDebugReport = ref<string | null>(null);
 const mediaRecorder = ref<MediaRecorder | null>(null);
 const audioChunks = ref<BlobPart[]>([]);
@@ -149,7 +160,7 @@ const learnState = ref<PracticeState>(createPracticeState('en-ru'));
 const showLearnStartDialog = ref(false);
 const showRepeatStartDialog = ref(false);
 const voiceAnswerDialogState = ref<VoiceAnswerDialogState>('hidden');
-const intervalRepetitionQueue = useIntervalRepetitionQueue();
+const repeatSession = useRepeatSession();
 
 let answerRequestSequence = 0;
 let activeAnswerRequestId: number | null = null;
@@ -247,9 +258,9 @@ if (shouldAutoStartRepeat) {
 }
 
 watch(
-  () => route.name,
-  (routeName) => {
-    selectedMode.value = routeName === 'learn' ? 'learn' : 'repeat';
+  () => props.mode,
+  (mode) => {
+    selectedMode.value = mode;
     showLearnStartDialog.value = selectedMode.value === 'learn' && !learnState.value.word;
     showRepeatStartDialog.value = selectedMode.value === 'repeat' && !repeatState.value.word;
 
@@ -378,16 +389,6 @@ const correctAnswerPartLines = computed(() =>
     buildAnswerParts(answer, index === 0 ? currentState.value.answerTypo : null, `correct-${index}`),
   ),
 );
-function getRequestBody(mode: PracticeMode, intervalRepetitionWordId: number | null) {
-  const body: { word_id?: number } = {};
-
-  if (mode === 'repeat' && intervalRepetitionWordId !== null) {
-    body.word_id = intervalRepetitionWordId;
-  }
-
-  return body;
-}
-
 function getAnswerLanguage(displayDirection: DisplayDirection) {
   return displayDirection === 'en-ru' ? 'ru' : 'en';
 }
@@ -562,7 +563,7 @@ function clearError() {
 
 async function loadIntervalRepetitions() {
   try {
-    await intervalRepetitionQueue.loadOnce();
+    await repeatSession.preloadIntervalRepetitions();
   } catch (error) {
     console.error('[interval-repetitions:error]', error);
   }
@@ -618,62 +619,17 @@ async function sendCurrentWordToManualReview() {
 async function requestWord(options?: { reloadIntervalRepetitions?: boolean }) {
   invalidateActiveAnswerRequest();
   const nextMode = selectedMode.value;
-  const wordModePath = nextMode === 'learn' ? 'learn' : 'repeat';
-  const url = `${BACKEND_URL}/api/telegram-app/words/${wordModePath}`;
   clearError();
   requestError.value = null;
   isLoading.value = true;
   const nextDisplayDirection: DisplayDirection = 'en-ru';
   const targetState = nextMode === 'learn' ? learnState.value : repeatState.value;
-  let intervalRepetitionWordId: number | null = null;
 
   try {
-    if (nextMode === 'repeat') {
-      if (options?.reloadIntervalRepetitions) {
-        await intervalRepetitionQueue.reload();
-      } else {
-        await loadIntervalRepetitions();
-      }
-      intervalRepetitionWordId = intervalRepetitionQueue.getRandomWordId();
-
-      if (
-        options?.reloadIntervalRepetitions &&
-        intervalRepetitionWordId === null
-      ) {
-        requestError.value = 'Сейчас нет слов для интервального повторения';
-        showError(requestError.value);
-        return;
-      }
-    }
-
-    const body = getRequestBody(nextMode, intervalRepetitionWordId);
-    console.log('[practice-word:request]', {
-      method: 'POST',
-      url,
-      body,
-    });
-
-    const response = await authorizedFetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
-
-    const contentType = response.headers.get('content-type') ?? '';
-    const data = contentType.includes('application/json') ? await response.json() : await response.text();
-
-    console.log('[practice-word:response]', data);
-
-    if (!response.ok) {
-      requestError.value =
-        response.status === 404
-          ? getWordNotFoundMessage()
-          : getBackendErrorMessage(data, `Backend вернул ${response.status}`);
-      showError(requestError.value);
-      return;
-    }
+    // View выбирает сценарий, а последовательность repeat-запросов скрыта в composable.
+    const data = nextMode === 'repeat'
+      ? await repeatSession.requestNextWord(options)
+      : await fetchLearnWord();
 
     targetState.word = normalizeWordData(data) ?? {
       id: null,
@@ -704,11 +660,17 @@ async function requestWord(options?: { reloadIntervalRepetitions?: boolean }) {
 
     if (nextMode === 'learn') {
       saveLearnSessionWord(targetState.word, nextDisplayDirection);
-    } else if (intervalRepetitionWordId !== null) {
-      intervalRepetitionQueue.removeWordId(intervalRepetitionWordId);
     }
   } catch (error) {
-    requestError.value = error instanceof Error ? error.message : 'Не удалось выполнить запрос';
+    if (error instanceof EmptyIntervalRepetitionQueueError) {
+      requestError.value = error.message;
+    } else if (error instanceof PracticeApiError) {
+      requestError.value = error.status === 404
+        ? getWordNotFoundMessage()
+        : getBackendErrorMessage(error.responseData, `Backend вернул ${error.status}`);
+    } else {
+      requestError.value = error instanceof Error ? error.message : 'Не удалось выполнить запрос';
+    }
     showError(requestError.value);
     console.error('[practice-word:error]', error);
   } finally {

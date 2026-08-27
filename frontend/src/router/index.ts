@@ -12,11 +12,14 @@ export const router = createRouter({
       path: '/learn',
       name: 'learn',
       component: () => import('@/views/PracticeView.vue'),
+      // Компонент получает режим явно и не угадывает его по имени маршрута.
+      props: { mode: 'learn' },
     },
     {
       path: '/repeat',
       name: 'repeat',
       component: () => import('@/views/PracticeView.vue'),
+      props: { mode: 'repeat' },
     },
     {
       path: '/dictionary',
