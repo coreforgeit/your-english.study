@@ -2,6 +2,7 @@ import logging
 
 from db.session import async_session_factory
 from enums import TextModel, WorkerTaskName
+from task_queue.tasks import check_new_words_milestone_notification
 from worker.broker import broker
 from worker.vocabulary.learning_service import VocabularyLearningService
 from worker.vocabulary.service import VocabularyReviewService
@@ -57,14 +58,14 @@ async def record_learned_word(
 
     async with async_session_factory() as session:
         try:
-            needs_review = await VocabularyLearningService(
+            result = await VocabularyLearningService(
                 session,
             ).record_learned_word(
                 user_id=user_id,
                 word_id=word_id,
                 session_id=session_id,
             )
-            if needs_review:
+            if result.needs_review:
                 await review_word.kiq(
                     word_id=word_id,
                     model=TextModel.GPT_4O_MINI.value,
@@ -75,7 +76,8 @@ async def record_learned_word(
             logger.info(
                 f'Изученное слово сохранено: '
                 f'user_id={user_id} word_id={word_id} '
-                f'отправлено_на_проверку={needs_review}',
+                f'создано={result.created} '
+                f'отправлено_на_проверку={result.needs_review}',
             )
         except Exception:
             await session.rollback()
@@ -84,3 +86,14 @@ async def record_learned_word(
                 f'user_id={user_id} word_id={word_id}',
             )
             raise
+
+    if not result.created:
+        return
+
+    try:
+        await check_new_words_milestone_notification.kiq(user_id=user_id)
+    except Exception:
+        logger.exception(
+            f'Не удалось отправить проверку уведомления о новых словах: '
+            f'user_id={user_id} word_id={word_id}',
+        )

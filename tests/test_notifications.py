@@ -3,8 +3,12 @@ from unittest.mock import AsyncMock
 
 from api.dependencies import CurrentTelegramUser
 from api.routers.notifications import notification_events, stream_notifications
-from enums import LearnedWordStatus
-from services.notifications import UserNotification, user_notifications_channel
+from enums import NotificationType
+from services.notifications import (
+    NOTIFICATION_TEXTS,
+    build_notification,
+    user_notifications_channel,
+)
 
 
 class FakePubSub:
@@ -27,10 +31,29 @@ class FakeRedis:
 
 
 class NotificationsRouterTest(unittest.IsolatedAsyncioTestCase):
-    async def test_sends_notification_from_user_channel(self):
-        notification = UserNotification(
+    def test_every_notification_type_has_text(self):
+        self.assertEqual(set(NOTIFICATION_TEXTS), set(NotificationType))
+
+    def test_notification_templates_render_expected_text(self):
+        learned_notification = build_notification(
+            NotificationType.WORD_LEARNED,
             word='example',
-            status=LearnedWordStatus.FAMILIAR,
+        )
+        five_words_notification = build_notification(
+            NotificationType.FIVE_NEW_WORDS_TODAY,
+        )
+
+        self.assertEqual(
+            learned_notification.text,
+            'Слово «example» выучено.',
+        )
+        self.assertIn('Уже 5 новых слов', five_words_notification.text)
+
+    async def test_sends_notification_from_user_channel(self):
+        notification = build_notification(
+            NotificationType.WORD_STATUS_CHANGED,
+            word='example',
+            status='знакомое',
         )
         pubsub = FakePubSub(
             [{'data': notification.model_dump_json()}],

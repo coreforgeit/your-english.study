@@ -3,9 +3,13 @@ import { z } from 'zod';
 import { BACKEND_URL } from '@/shared/config';
 
 const notificationSchema = z.object({
-  type: z.literal('word_status_changed'),
-  word: z.string().min(1),
-  status: z.enum(['new', 'familiar', 'learned']),
+  type: z.enum([
+    'five_new_words_today',
+    'ten_new_words_today',
+    'word_status_changed',
+    'word_learned',
+  ]),
+  text: z.string().min(1),
 });
 
 export type NotificationMessage = z.infer<typeof notificationSchema>;

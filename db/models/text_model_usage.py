@@ -18,6 +18,7 @@ class TextModelUsage(Base):
             native_enum=False,
             create_constraint=True,
             values_callable=lambda enum_cls: [item.value for item in enum_cls],
+            length=50,
         ),
         default=AIRequestInitiator.SYSTEM,
         server_default=AIRequestInitiator.SYSTEM,
@@ -29,7 +30,7 @@ class TextModelUsage(Base):
             native_enum=False,
             create_constraint=True,
             values_callable=lambda enum_cls: [item.value for item in enum_cls],
-            length=50
+            length=50,
         ),
 
     )

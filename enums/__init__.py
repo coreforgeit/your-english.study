@@ -1,5 +1,6 @@
 from enums.ai import SpeechModel, SpeechVoice, TextModel, TranscriptionModel
 from enums.app import AppLaunchMode
+from enums.notifications import NotificationType
 from enums.reminders import ReminderKey
 from enums.redis import RedisChannel, RedisKey
 from enums.user_settings import Timezone
@@ -23,6 +24,7 @@ __all__ = (
     'AnswerLanguage',
     'AnswerType',
     'LearnedWordStatus',
+    'NotificationType',
     'ReminderKey',
     'RedisChannel',
     'RedisKey',

@@ -1,9 +1,17 @@
+from dataclasses import dataclass
+
 from sqlalchemy import select
 from sqlalchemy.dialects import postgresql as psql
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import LearnedWord, WordEn
 from enums import WordStatus
+
+
+@dataclass(frozen=True, slots=True)
+class LearnedWordRecordResult:
+    created: bool
+    needs_review: bool
 
 
 class VocabularyLearningService:
@@ -16,7 +24,7 @@ class VocabularyLearningService:
         user_id: int,
         word_id: int,
         session_id: str,
-    ) -> bool:
+    ) -> LearnedWordRecordResult:
         word = await self.session.scalar(
             select(WordEn)
             .where(WordEn.id == word_id)
@@ -25,7 +33,7 @@ class VocabularyLearningService:
         if word is None:
             raise LookupError(f'Слово {word_id} не найдено')
 
-        await self.session.execute(
+        insert_result = await self.session.execute(
             psql.insert(LearnedWord)
             .values(
                 user_id=user_id,
@@ -34,12 +42,17 @@ class VocabularyLearningService:
             )
             .on_conflict_do_nothing(
                 index_elements=[LearnedWord.user_id, LearnedWord.word_id],
-            ),
+            )
+            .returning(LearnedWord.id),
         )
+        created = insert_result.scalar_one_or_none() is not None
 
         needs_review = not word.is_reviewed
         if needs_review:
             word.status = WordStatus.CHECKING
 
         await self.session.flush()
-        return needs_review
+        return LearnedWordRecordResult(
+            created=created,
+            needs_review=needs_review,
+        )

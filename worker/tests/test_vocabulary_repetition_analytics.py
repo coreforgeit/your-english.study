@@ -195,7 +195,11 @@ class VocabularyRepetitionStatusTest(unittest.TestCase):
 
 
 class VocabularyRepetitionTaskTest(unittest.IsolatedAsyncioTestCase):
-    @patch('worker.analytics.vocabulary.tasks.notification_redis_client')
+    @patch(
+        'worker.analytics.vocabulary.tasks.'
+        'send_word_status_changed_notification.kiq',
+        new_callable=AsyncMock,
+    )
     @patch(
         'worker.analytics.vocabulary.tasks.VocabularyRepetitionAnalyticsService',
     )
@@ -204,7 +208,7 @@ class VocabularyRepetitionTaskTest(unittest.IsolatedAsyncioTestCase):
         self,
         session_factory: MagicMock,
         service_class: MagicMock,
-        notification_redis_client: MagicMock,
+        enqueue_notification: AsyncMock,
     ) -> None:
         session = MagicMock(spec=AsyncSession)
         session.scalar = AsyncMock(return_value='example')
@@ -234,13 +238,17 @@ class VocabularyRepetitionTaskTest(unittest.IsolatedAsyncioTestCase):
         )
         session.commit.assert_awaited_once_with()
         session.rollback.assert_not_awaited()
-        notification_redis_client.publish.assert_awaited_once_with(
-            'user-notifications:42',
-            '{"type":"word_status_changed","word":"example",'
-            '"status":"familiar"}',
+        enqueue_notification.assert_awaited_once_with(
+            user_id=42,
+            word_id=7,
+            status='familiar',
         )
 
-    @patch('worker.analytics.vocabulary.tasks.notification_redis_client')
+    @patch(
+        'worker.analytics.vocabulary.tasks.'
+        'send_word_status_changed_notification.kiq',
+        new_callable=AsyncMock,
+    )
     @patch(
         'worker.analytics.vocabulary.tasks.VocabularyRepetitionAnalyticsService',
     )
@@ -249,7 +257,7 @@ class VocabularyRepetitionTaskTest(unittest.IsolatedAsyncioTestCase):
         self,
         session_factory: MagicMock,
         service_class: MagicMock,
-        notification_redis_client: MagicMock,
+        enqueue_notification: AsyncMock,
     ) -> None:
         session = MagicMock(spec=AsyncSession)
         session.scalar = AsyncMock()
@@ -270,4 +278,4 @@ class VocabularyRepetitionTaskTest(unittest.IsolatedAsyncioTestCase):
 
         session.commit.assert_awaited_once_with()
         session.scalar.assert_not_awaited()
-        notification_redis_client.publish.assert_not_awaited()
+        enqueue_notification.assert_not_awaited()

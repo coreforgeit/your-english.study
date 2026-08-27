@@ -42,6 +42,7 @@ class LearnedWord(Base):
             native_enum=False,
             create_constraint=True,
             values_callable=lambda enum_cls: [item.value for item in enum_cls],
+            length=50,
         ),
         default=LearnedWordStatus.NEW,
         server_default=LearnedWordStatus.NEW,

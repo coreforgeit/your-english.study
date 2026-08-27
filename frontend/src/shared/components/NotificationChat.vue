@@ -1,26 +1,10 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue';
 
-type NotificationChatMessage = {
-  id: number;
-  type: 'word_status_changed';
-  word: string;
-  status: 'new' | 'familiar' | 'learned';
-};
-
-function getStatusLabel(status: NotificationChatMessage['status']): string {
-  switch (status) {
-    case 'new':
-      return 'новое';
-    case 'familiar':
-      return 'знакомое';
-    case 'learned':
-      return 'изучено';
-  }
-}
+import type { NotificationMessage } from '@/shared/api/notifications';
 
 const props = defineProps<{
-  messages: NotificationChatMessage[];
+  messages: Array<NotificationMessage & { id: number }>;
   withNavigation?: boolean;
 }>();
 
@@ -54,8 +38,7 @@ watch(
       aria-relevant="additions"
     >
       <li v-for="message in messages" :key="message.id" class="notification-chat-message">
-        <span>Статус слова изменён</span>
-        <strong>«{{ message.word }}»: {{ getStatusLabel(message.status) }}</strong>
+        <span>{{ message.text }}</span>
       </li>
     </ol>
   </aside>
@@ -138,10 +121,6 @@ watch(
 }
 
 .notification-chat-message {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
   min-height: 40px;
   padding: 8px 10px;
   border: 1px solid var(--color-primary-strong);
@@ -151,17 +130,10 @@ watch(
 }
 
 .notification-chat-message span {
-  min-width: 0;
+  display: block;
   overflow-wrap: anywhere;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
-}
-
-.notification-chat-message strong {
-  min-width: 0;
-  color: var(--color-text);
-  font-size: 14px;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
+  line-height: 1.35;
 }
 </style>
