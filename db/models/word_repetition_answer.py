@@ -2,6 +2,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import Base
+from enums import LearnedWordStatus
 
 
 class WordRepetitionAnswer(Base):
@@ -35,3 +36,15 @@ class WordRepetitionAnswer(Base):
         index=True,
     )
     is_correct: Mapped[bool] = mapped_column(sa.Boolean)
+    word_status: Mapped[LearnedWordStatus] = mapped_column(
+        sa.Enum(
+            LearnedWordStatus,
+            name='word_repetition_answer_word_status',
+            native_enum=False,
+            create_constraint=True,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+            length=50,
+        ),
+        default=LearnedWordStatus.NEW,
+        server_default=LearnedWordStatus.NEW,
+    )

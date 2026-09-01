@@ -23,17 +23,6 @@ class VocabularyRepetitionAnalyticsService:
         session_id: str,
         is_correct: bool,
     ) -> LearnedWordStatus | None:
-
-        self.session.add(
-            WordRepetitionAnswer(
-                user_id=user_id,
-                word_id=word_id,
-                session_id=session_id,
-                is_correct=is_correct,
-            ),
-        )
-        await self.session.flush()
-
         learned_word = await self.session.scalar(
             sa.select(LearnedWord)
             .where(
@@ -42,6 +31,23 @@ class VocabularyRepetitionAnalyticsService:
             )
             .with_for_update(),
         )
+
+        current_status = (
+            learned_word.status
+            if learned_word is not None
+            else LearnedWordStatus.NEW
+        )
+        self.session.add(
+            WordRepetitionAnswer(
+                user_id=user_id,
+                word_id=word_id,
+                session_id=session_id,
+                is_correct=is_correct,
+                word_status=current_status,
+            ),
+        )
+        await self.session.flush()
+
         if learned_word is None:
             logger.warning(f'Аналитика повторения: изучаемое слово не найдено, user_id={user_id} word_id={word_id}')
             return None
@@ -53,6 +59,7 @@ class VocabularyRepetitionAnalyticsService:
                 .where(
                     WordRepetitionAnswer.user_id == user_id,
                     WordRepetitionAnswer.word_id == word_id,
+                    WordRepetitionAnswer.word_status == current_status,
                 )
                 .order_by(
                     WordRepetitionAnswer.created_at.desc(),

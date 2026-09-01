@@ -70,6 +70,7 @@ class VocabularyRepetitionAnalyticsServiceTest(
         added_answer = session.add.call_args.args[0]
         self.assertIsInstance(added_answer, WordRepetitionAnswer)
         self.assertTrue(added_answer.is_correct)
+        self.assertEqual(added_answer.word_status, LearnedWordStatus.NEW)
         service._get_next_status.assert_called_once_with(
             LearnedWordStatus.NEW,
             [True, True, True],
@@ -88,7 +89,45 @@ class VocabularyRepetitionAnalyticsServiceTest(
             'word_repetition_answers.id DESC',
             compiled_statement,
         )
+        self.assertIn(
+            "word_repetition_answers.word_status = 'new'",
+            compiled_statement,
+        )
         self.assertIn('LIMIT 3', compiled_statement)
+
+    async def test_uses_only_answers_from_familiar_status(self) -> None:
+        session = self.make_session()
+        learned_word = self.make_learned_word(LearnedWordStatus.FAMILIAR)
+        session.scalar.return_value = learned_word
+        recent_answers_result = MagicMock()
+        recent_answers_result.all.return_value = [True, True, True]
+        session.scalars.return_value = recent_answers_result
+        service = VocabularyRepetitionAnalyticsService(session)
+
+        changed_status = await service.record_answer(
+            user_id=42,
+            word_id=7,
+            session_id='answer-session',
+            is_correct=True,
+        )
+
+        self.assertEqual(changed_status, LearnedWordStatus.LEARNED)
+        added_answer = session.add.call_args.args[0]
+        self.assertEqual(
+            added_answer.word_status,
+            LearnedWordStatus.FAMILIAR,
+        )
+
+        recent_answers_statement = session.scalars.await_args.args[0]
+        compiled_statement = str(
+            recent_answers_statement.compile(
+                compile_kwargs={'literal_binds': True},
+            ),
+        )
+        self.assertIn(
+            "word_repetition_answers.word_status = 'familiar'",
+            compiled_statement,
+        )
 
     async def test_learned_word_only_records_answer_and_review_metadata(
         self,
@@ -107,6 +146,11 @@ class VocabularyRepetitionAnalyticsServiceTest(
 
         self.assertIsNone(changed_status)
         self.assertEqual(learned_word.review_count, 5)
+        added_answer = session.add.call_args.args[0]
+        self.assertEqual(
+            added_answer.word_status,
+            LearnedWordStatus.LEARNED,
+        )
         session.scalars.assert_not_awaited()
 
     async def test_returns_none_when_status_is_unchanged(self) -> None:
@@ -144,6 +188,8 @@ class VocabularyRepetitionAnalyticsServiceTest(
         self.assertIsNone(changed_status)
         session.add.assert_called_once()
         session.flush.assert_awaited_once_with()
+        added_answer = session.add.call_args.args[0]
+        self.assertEqual(added_answer.word_status, LearnedWordStatus.NEW)
         session.scalars.assert_not_awaited()
 
 
