@@ -2,6 +2,8 @@ import { ref } from 'vue';
 import { z } from 'zod';
 
 import { fetchIntervalRepetitionWordIds } from '@/features/practice/api/practiceApi';
+import { buildRepetitionProgressNotification } from '@/features/practice/notifications/repetitionNotifications';
+import { useNotificationCenter } from '@/shared/notifications/useNotificationCenter';
 
 const WORD_IDS_STORAGE_KEY = 'practice:interval-repetition-word-ids';
 const REQUESTED_IN_SESSION_STORAGE_KEY = 'practice:interval-repetitions-requested';
@@ -30,6 +32,7 @@ function wasRequestedInCurrentSession(): boolean {
 }
 
 export function useIntervalRepetitionQueue() {
+  const { addNotification } = useNotificationCenter();
   const wordIds = ref<number[]>(readStoredWordIds());
   const hasRequested = ref(wasRequestedInCurrentSession());
   let loadPromise: Promise<void> | null = null;
@@ -91,6 +94,11 @@ export function useIntervalRepetitionQueue() {
     const nextWordIds = wordIds.value.filter((storedWordId) => storedWordId !== wordId);
     if (nextWordIds.length !== wordIds.value.length) {
       replaceWordIds(nextWordIds);
+
+      const notification = buildRepetitionProgressNotification(nextWordIds.length);
+      if (notification) {
+        addNotification(notification);
+      }
     }
   }
 

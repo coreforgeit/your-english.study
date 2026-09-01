@@ -8,6 +8,8 @@ const notificationSchema = z.object({
     'ten_new_words_today',
     'word_status_changed',
     'word_learned',
+    'repetition_words_remaining',
+    'repetitions_completed',
   ]),
   text: z.string().min(1),
 });

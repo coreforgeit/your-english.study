@@ -1,11 +1,15 @@
 <script setup lang="ts">
+import { X } from '@lucide/vue';
 import { nextTick, ref, watch } from 'vue';
 
-import type { NotificationMessage } from '@/shared/api/notifications';
+import type { NotificationListItem } from '@/shared/notifications/useNotificationCenter';
 
 const props = defineProps<{
-  messages: Array<NotificationMessage & { id: number }>;
+  messages: readonly NotificationListItem[];
   withNavigation?: boolean;
+}>();
+const emit = defineEmits<{
+  clear: [];
 }>();
 
 const messageList = ref<HTMLElement | null>(null);
@@ -28,7 +32,17 @@ watch(
   >
     <header class="notification-chat-header">
       <h2>Сообщения</h2>
-      <span class="notification-chat-badge">SSE</span>
+      <div class="notification-chat-header-actions">
+        <span class="notification-chat-badge">SSE</span>
+        <button
+          class="notification-chat-close"
+          type="button"
+          aria-label="Закрыть и очистить уведомления"
+          @click="emit('clear')"
+        >
+          <X :size="18" />
+        </button>
+      </div>
     </header>
 
     <ol
@@ -83,6 +97,12 @@ watch(
   font-weight: 800;
 }
 
+.notification-chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .notification-chat-badge {
   padding: 4px 8px;
   border-radius: 999px;
@@ -91,6 +111,26 @@ watch(
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.04em;
+}
+
+.notification-chat-close {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--color-transparent);
+  border-radius: 9px;
+  background: var(--color-transparent);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.notification-chat-close:hover,
+.notification-chat-close:focus-visible {
+  border-color: var(--color-border);
+  background: var(--color-neutral-soft);
+  color: var(--color-text);
 }
 
 .notification-chat-list {

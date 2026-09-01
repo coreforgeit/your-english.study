@@ -8,11 +8,11 @@ import { useLaunchScenario } from '@/app/launch/useLaunchScenario';
 import { authenticateTelegram } from '@/shared/api/auth';
 import {
   createNotificationStream,
-  type NotificationMessage,
 } from '@/shared/api/notifications';
 import NotificationChat from '@/shared/components/NotificationChat.vue';
 import TimeWheelPicker from '@/shared/components/TimeWheelPicker.vue';
 import TimezonePicker from '@/shared/components/TimezonePicker.vue';
+import { useNotificationCenter } from '@/shared/notifications/useNotificationCenter';
 import {
   fetchAndStoreUserSettings,
   fetchLanguageLevels,
@@ -26,11 +26,15 @@ import { useTelegramApp } from '@/shared/telegram/useTelegramApp';
 const { colorScheme, webApp } = useTelegramApp();
 const route = useRoute();
 const { runAfterPrerequisites } = useLaunchScenario();
+const {
+  messages: notificationMessages,
+  addNotification,
+  clearNotifications,
+} = useNotificationCenter();
 
 const authStatus = ref<'loading' | 'authenticated' | 'failed'>('loading');
 const showBottomNavigation = computed(() => route.name !== 'admin');
 const userSettings = ref<UserSettings | null>(null);
-const notificationMessages = ref<Array<NotificationMessage & { id: number }>>([]);
 const languageLevels = ref<LanguageLevel[]>([]);
 const showLanguageLevelDialog = ref(false);
 const selectedLanguageLevelId = ref<number | null>(null);
@@ -48,20 +52,11 @@ const settingsDialogTitle = computed(() =>
   settingsDialogRequired.value ? 'Выберите уровень английского' : 'Настройки',
 );
 let notificationStream: EventSource | null = null;
-let nextNotificationMessageId = 0;
 
 function connectNotificationStream() {
   notificationStream?.close();
-  notificationMessages.value = [];
-  notificationStream = createNotificationStream((notification) => {
-    notificationMessages.value = [
-      {
-        id: ++nextNotificationMessageId,
-        ...notification,
-      },
-      ...notificationMessages.value,
-    ];
-  });
+  clearNotifications();
+  notificationStream = createNotificationStream(addNotification);
 }
 
 function getBrowserTimezone() {
@@ -145,7 +140,7 @@ async function authorize() {
   authStatus.value = 'loading';
   notificationStream?.close();
   notificationStream = null;
-  notificationMessages.value = [];
+  clearNotifications();
 
   try {
     const isAuthenticated = await authenticateTelegram(webApp.value?.initData ?? '');
@@ -194,6 +189,7 @@ onBeforeUnmount(() => notificationStream?.close());
       <NotificationChat
         :messages="notificationMessages"
         :with-navigation="showBottomNavigation"
+        @clear="clearNotifications"
       />
 
       <nav v-if="showBottomNavigation" class="bottom-navigation" aria-label="Основное меню">
