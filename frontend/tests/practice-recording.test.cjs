@@ -1,34 +1,11 @@
 const assert = require('node:assert/strict');
-const { readFileSync } = require('node:fs');
-const path = require('node:path');
 const { test } = require('node:test');
-const vm = require('node:vm');
-const ts = require('typescript');
 const vue = require('vue');
-const { parse, compileScript } = require('vue/compiler-sfc');
-
-const frontendRoot = path.resolve(__dirname, '..');
-const { descriptor } = parse(readFileSync(path.join(frontendRoot, 'src/views/PracticeView.vue'), 'utf8'));
-const componentSource = compileScript(descriptor, { id: 'practice-recording-test' }).content;
-
-function evaluate(source, globals = {}) {
-  const { outputText } = ts.transpileModule(source, {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  });
-  const exports = {};
-  vm.runInNewContext(outputText, { exports, ...globals });
-  return exports;
-}
-
-const { APP_LIMITS } = evaluate(readFileSync(path.join(frontendRoot, 'src/shared/limits.ts'), 'utf8'));
-const { wordIdentitySchema } = evaluate(
-  readFileSync(path.join(frontendRoot, 'src/features/practice/api/practiceApi.ts'), 'utf8'),
-  { require: (name) => name === 'zod' ? require('zod') : {} },
-);
+const { load } = require('./helpers/loadFrontend.cjs');
 
 // Mount the real component's setup using Vue's renderer, without a browser or API.
 // Only browser media/timing APIs and external feature services are replaced.
-function mountPractice(t, { deferPermission = false, failStart = false } = {}) {
+function mountPractice(t, { deferPermission = false, failStart = false, standaloneLimits = null } = {}) {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   let now = 0;
   let volume = 128;
@@ -75,7 +52,6 @@ function mountPractice(t, { deferPermission = false, failStart = false } = {}) {
     zod: require('zod'),
     '@lucide/vue': {},
     'vue-router': { useRoute: () => ({ query: {} }), useRouter: () => ({ replace: async () => {} }) },
-    '@/shared/limits': { APP_LIMITS },
     '@/shared/navigation/appLaunch': { AppLaunchQuery: { AUTO_START: 'autoStart' }, APP_LAUNCH_AUTO_START_VALUE: 'true' },
     '@/shared/api/client': {
       BACKEND_URL: 'https://example.test',
@@ -85,18 +61,13 @@ function mountPractice(t, { deferPermission = false, failStart = false } = {}) {
         return new Promise(() => {});
       },
     },
-    '@/features/practice/api/practiceApi': { wordIdentitySchema },
     '@/features/practice/components/AudioWaveform.vue': {},
     '@/features/practice/components/WordCard.vue': {},
     '@/features/practice/composables/useRepeatSession': {
       useRepeatSession: () => ({ preloadIntervalRepetitions: async () => {} }),
     },
   };
-  const component = evaluate(componentSource, {
-    require(name) {
-      assert.ok(name in imports, `Unexpected import: ${name}`);
-      return imports[name];
-    },
+  const globals = {
     console: { log() {}, warn() {}, error() {} },
     sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
     navigator: { mediaDevices: { getUserMedia: () => permission } },
@@ -110,7 +81,10 @@ function mountPractice(t, { deferPermission = false, failStart = false } = {}) {
     clearTimeout,
     requestAnimationFrame: (callback) => { frames.set(++frameSequence, callback); return frameSequence; },
     cancelAnimationFrame: (id) => frames.delete(id),
-  }).default;
+  };
+  const component = standaloneLimits
+    ? { setup: () => load('src/shared/audio/useAudioRecorder.ts', imports, globals).useAudioRecorder(standaloneLimits) }
+    : load('src/views/PracticeView.vue', imports, globals).default;
 
   const renderer = vue.createRenderer({
     createComment: () => ({}), insert() {}, remove() {}, parentNode: () => null, nextSibling: () => null,
@@ -118,12 +92,13 @@ function mountPractice(t, { deferPermission = false, failStart = false } = {}) {
   let state;
   const app = renderer.createApp({
     setup() {
-      state = component.setup({ mode: 'repeat' }, { expose() {} });
+      const setup = component.setup({ mode: 'repeat' }, { expose() {} });
+      state = standaloneLimits ? setup : setup.session;
       return () => null;
     },
   });
   app.mount({});
-  state.repeatState.value.word = { id: 42, word: 'word', translations: ['слово'] };
+  if (!standaloneLimits) state.currentState.value.word = { id: 42, word: 'word', translations: ['слово'] };
   t.after(() => app.unmount());
 
   return {
@@ -241,4 +216,37 @@ test('failed start releases resources without leaving a submission timer', async
   assert.equal(h.track.stopped, true);
   assert.equal(h.contexts[0].closed, true);
   assert.equal(h.requests.length, 0);
+});
+
+test('standalone recorder uses its supplied limit and returns audio without an API request', async (t) => {
+  const h = mountPractice(t, { standaloneLimits: {
+    maxDurationMs: 60_000, minDurationMs: 500, silenceDurationMs: 1_200, silenceThreshold: 0.025,
+  } });
+  const completed = [];
+  await h.state.startRecording((result) => completed.push(result));
+  await h.tick(20_000);
+  assert.equal(h.state.isRecording.value, true);
+  await h.tick(40_000);
+  assert.equal(h.state.isRecording.value, false);
+  assert.equal(completed.length, 1);
+  assert.equal(completed[0].reason, 'duration');
+  assert.equal(await completed[0].blob.text(), 'voice');
+  assert.equal(h.requests.length, 0);
+});
+
+test('standalone manual stop reports its reason and keeps recordings separate', async (t) => {
+  const h = mountPractice(t, { standaloneLimits: {
+    maxDurationMs: 20_000, minDurationMs: 500, silenceDurationMs: 1_200, silenceThreshold: 0.025,
+  } });
+  const completed = [];
+  await h.state.startRecording((result) => completed.push(result));
+  h.state.stopRecording();
+  const nextRecording = h.state.startRecording((result) => completed.push(result));
+  await nextRecording;
+  await h.tick(20_000);
+  assert.equal(completed.length, 2);
+  assert.equal(completed[0].reason, 'manual');
+  assert.equal(completed[1].reason, 'duration');
+  assert.equal(await completed[0].blob.text(), 'voice');
+  assert.equal(await completed[1].blob.text(), 'voice');
 });

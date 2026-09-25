@@ -1,36 +1,7 @@
 const assert = require('node:assert/strict');
-const { readFileSync } = require('node:fs');
-const path = require('node:path');
 const { test } = require('node:test');
-const vm = require('node:vm');
-const ts = require('typescript');
 const vue = require('vue');
-const { parse, compileScript } = require('vue/compiler-sfc');
-
-const frontendRoot = path.resolve(__dirname, '..');
-const quietConsole = { log() {}, warn() {}, error() {} };
-const sources = new Map();
-
-function load(relativePath, imports, globals = {}) {
-  if (!sources.has(relativePath)) {
-    let source = readFileSync(path.join(frontendRoot, relativePath), 'utf8');
-    if (relativePath.endsWith('.vue')) {
-      source = compileScript(parse(source).descriptor, { id: 'word-response-test' }).content;
-    }
-    sources.set(relativePath, ts.transpileModule(source, {
-      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-    }).outputText);
-  }
-  const exports = {};
-  vm.runInNewContext(sources.get(relativePath), {
-    exports, Error, console: quietConsole, ...globals,
-    require(name) {
-      assert.ok(name in imports, `Unexpected import: ${name}`);
-      return imports[name];
-    },
-  });
-  return exports;
-}
+const { load } = require('./helpers/loadFrontend.cjs');
 
 function createApi(body, status = 200) {
   return load('src/features/practice/api/practiceApi.ts', {
@@ -138,7 +109,7 @@ function mountPractice(t, { mode = 'repeat', responses = [], stored = new Map() 
   });
   const app = renderer.createApp({
     setup() {
-      state = component.setup({ mode }, { expose() {} });
+      state = component.setup({ mode }, { expose() {} }).session;
       return () => null;
     },
   });

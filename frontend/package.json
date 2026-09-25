@@ -8,6 +8,7 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",
+    "test": "node --test tests/*.test.cjs",
     "test:recording": "node --test tests/practice-recording.test.cjs",
     "test:word-response": "node --test tests/practice-word-response.test.cjs"
   },

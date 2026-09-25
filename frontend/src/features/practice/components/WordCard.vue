@@ -2,11 +2,7 @@
 import { Volume2 } from '@lucide/vue';
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
-type TextPart = {
-  key: string;
-  value: string;
-  state: 'normal' | 'replace' | 'extra' | 'missing' | 'expected';
-};
+import type { AnswerCharPart as TextPart } from '@/shared/practice';
 
 const AUDIO_UNAVAILABLE_MESSAGE = 'Аудиофайл недоступен';
 const AUDIO_WARNING_DURATION_MS = 2000;
