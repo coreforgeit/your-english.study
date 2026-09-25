@@ -2,6 +2,18 @@ import { z } from 'zod';
 
 import { authorizedFetch, BACKEND_URL } from '@/shared/api/client';
 
+export const wordIdentitySchema = z.object({
+  id: z.number().int().positive(),
+  word: z.string().refine((value) => value.trim().length > 0, 'Слово не должно быть пустым'),
+});
+
+// Проверяем обязательные поля; остальные сохраняем для нормализации в карточку.
+const wordResponseSchema = z.object({
+  data: wordIdentitySchema.passthrough(),
+});
+
+export type PracticeWordResponse = z.infer<typeof wordResponseSchema>;
+
 const intervalRepetitionsResponseSchema = z.object({
   data: z.array(z.number().int().positive()),
 });
@@ -26,7 +38,7 @@ async function readResponse(response: Response): Promise<unknown> {
 async function requestWord(
   mode: 'learn' | 'repeat',
   wordId: number | null = null,
-): Promise<unknown> {
+): Promise<PracticeWordResponse> {
   const url = `${BACKEND_URL}/api/telegram-app/words/${mode}`;
   const body = mode === 'repeat' && wordId !== null ? { word_id: wordId } : {};
 
@@ -47,14 +59,19 @@ async function requestWord(
     throw new PracticeApiError(response.status, data);
   }
 
-  return data;
+  const result = wordResponseSchema.safeParse(data);
+  if (!result.success) {
+    throw new Error('Не удалось загрузить слово. Попробуйте ещё раз.', { cause: result.error });
+  }
+
+  return result.data;
 }
 
-export async function fetchLearnWord(): Promise<unknown> {
+export async function fetchLearnWord(): Promise<PracticeWordResponse> {
   return requestWord('learn');
 }
 
-export async function fetchRepeatWord(wordId: number | null): Promise<unknown> {
+export async function fetchRepeatWord(wordId: number | null): Promise<PracticeWordResponse> {
   return requestWord('repeat', wordId);
 }
 

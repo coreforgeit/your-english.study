@@ -21,6 +21,10 @@ function evaluate(source, globals = {}) {
 }
 
 const { APP_LIMITS } = evaluate(readFileSync(path.join(frontendRoot, 'src/shared/limits.ts'), 'utf8'));
+const { wordIdentitySchema } = evaluate(
+  readFileSync(path.join(frontendRoot, 'src/features/practice/api/practiceApi.ts'), 'utf8'),
+  { require: (name) => name === 'zod' ? require('zod') : {} },
+);
 
 // Mount the real component's setup using Vue's renderer, without a browser or API.
 // Only browser media/timing APIs and external feature services are replaced.
@@ -81,7 +85,7 @@ function mountPractice(t, { deferPermission = false, failStart = false } = {}) {
         return new Promise(() => {});
       },
     },
-    '@/features/practice/api/practiceApi': {},
+    '@/features/practice/api/practiceApi': { wordIdentitySchema },
     '@/features/practice/components/AudioWaveform.vue': {},
     '@/features/practice/components/WordCard.vue': {},
     '@/features/practice/composables/useRepeatSession': {

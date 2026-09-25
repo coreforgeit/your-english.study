@@ -7,6 +7,8 @@ import { z } from 'zod';
 import {
   fetchLearnWord,
   PracticeApiError,
+  wordIdentitySchema,
+  type PracticeWordResponse,
 } from '@/features/practice/api/practiceApi';
 import AudioWaveform from '@/features/practice/components/AudioWaveform.vue';
 import WordCard from '@/features/practice/components/WordCard.vue';
@@ -47,7 +49,7 @@ type AnswerCharPart = {
 };
 
 type WordData = {
-  id: number | null;
+  id: number;
   word: string;
   pronunciation: string | null;
   translations: string[];
@@ -79,9 +81,7 @@ type PracticeState = {
   recordedAudio: Blob | null;
 };
 
-const wordDataStorageSchema = z.object({
-  id: z.number().nullable(),
-  word: z.string(),
+const wordDataStorageSchema = wordIdentitySchema.extend({
   pronunciation: z.string().nullable(),
   translations: z.array(z.string()),
   partOfSpeech: z.string().nullable(),
@@ -488,19 +488,11 @@ function buildAnswerParts(text: string, typo: AnswerTypo | null, line: string): 
   return parts;
 }
 
-function normalizeWordData(data: unknown): WordData | null {
-  if (!data || typeof data !== 'object' || !('data' in data) || !data.data || typeof data.data !== 'object') {
-    return null;
-  }
-
+function normalizeWordData(data: PracticeWordResponse): WordData {
   const wordData = data.data;
 
-  if (!('word' in wordData) || typeof wordData.word !== 'string') {
-    return null;
-  }
-
   return {
-    id: 'id' in wordData && typeof wordData.id === 'number' ? wordData.id : null,
+    id: wordData.id,
     word: wordData.word,
     pronunciation:
       'pronunciation' in wordData && typeof wordData.pronunciation === 'string' ? wordData.pronunciation : null,
@@ -633,16 +625,7 @@ async function requestWord(options?: { reloadIntervalRepetitions?: boolean }) {
       ? await repeatSession.requestNextWord(options)
       : await fetchLearnWord();
 
-    targetState.word = normalizeWordData(data) ?? {
-      id: null,
-      word: 'Ответ без слова',
-      pronunciation: null,
-      translations: ['Ответ без перевода'],
-      partOfSpeech: null,
-      audioUrl: null,
-      level: null,
-      answerLanguage: null,
-    };
+    targetState.word = normalizeWordData(data);
     targetState.displayDirection =
       nextMode === 'repeat' && targetState.word.answerLanguage !== null
         ? targetState.word.answerLanguage === 'ru'
