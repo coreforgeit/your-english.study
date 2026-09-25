@@ -31,7 +31,7 @@ const {
 
 async function startReminderRepetition() {
   await router.replace({ name: 'repeat' });
-  await requestWord({ reloadIntervalRepetitions: true });
+  await requestWord({ requireIntervalRepetitions: true });
 }
 if (shouldAutoStartRepeat) void startReminderRepetition();
 

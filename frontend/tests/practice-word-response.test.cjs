@@ -77,8 +77,9 @@ function mountPractice(t, { mode = 'repeat', responses = [], stored = new Map() 
     '@/shared/config': { BACKEND_URL: 'https://example.test' },
     '@/features/practice/composables/useIntervalRepetitionQueue': {
       useIntervalRepetitionQueue: () => ({
-        loadOnce: async () => {}, reload: async () => {},
-        getRandomWordId: () => 42, removeWordId: (id) => removedIds.push(id),
+        beginVisit: () => ({}), endVisit() {}, assertCurrent() {},
+        loadOnce: async () => {},
+        getRandomWordId: () => 42, removeWordId: (_visit, id) => removedIds.push(id),
       }),
     },
   }, {

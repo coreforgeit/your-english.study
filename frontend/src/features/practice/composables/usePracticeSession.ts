@@ -42,8 +42,10 @@ export function usePracticeSession(mode: () => PracticeMode, options?: { autoSta
   const showLearnStartDialog = ref(false);
   const showRepeatStartDialog = ref(false);
   const voiceAnswerDialogState = ref<VoiceAnswerDialogState>('hidden');
-  const repeatSession = useRepeatSession();
+  const repeatSession = useRepeatSession(mode);
 
+  let wordRequestSequence = 0;
+  let isUnmounted = false;
   let answerRequestSequence = 0;
   let activeAnswerRequestId: number | null = null;
   let voiceAnswerTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -62,10 +64,13 @@ export function usePracticeSession(mode: () => PracticeMode, options?: { autoSta
   repeatState.value = restoreRepeatSessionState() ?? repeatState.value;
 
   watch(selectedMode, (nextMode) => {
+    wordRequestSequence += 1;
+    isLoading.value = false;
+    invalidateActiveAnswerRequest();
     showLearnStartDialog.value = nextMode === 'learn' && !learnState.value.word;
     showRepeatStartDialog.value = nextMode === 'repeat' && !repeatState.value.word;
     if (nextMode === 'repeat') void loadIntervalRepetitions();
-  });
+  }, { flush: 'sync' });
   showLearnStartDialog.value = selectedMode.value === 'learn' && !learnState.value.word;
   showRepeatStartDialog.value = selectedMode.value === 'repeat' && !repeatState.value.word && !options?.autoStartRepeat;
 
@@ -93,7 +98,9 @@ export function usePracticeSession(mode: () => PracticeMode, options?: { autoSta
     try {
       await repeatSession.preloadIntervalRepetitions();
     } catch (error) {
-      console.error('Не удалось загрузить очередь повторений:', error);
+      if (!(error instanceof ApiError && error.kind === 'aborted')) {
+        console.error('Не удалось загрузить очередь повторений:', error);
+      }
     }
   }
 
@@ -126,7 +133,9 @@ export function usePracticeSession(mode: () => PracticeMode, options?: { autoSta
     }
   }
 
-  async function requestWord(options?: { reloadIntervalRepetitions?: boolean }) {
+  async function requestWord(options?: { requireIntervalRepetitions?: boolean }) {
+    if (isUnmounted) return;
+    const requestId = ++wordRequestSequence;
     invalidateActiveAnswerRequest();
     const nextMode = selectedMode.value;
     clearError();
@@ -141,6 +150,7 @@ export function usePracticeSession(mode: () => PracticeMode, options?: { autoSta
         ? await repeatSession.requestNextWord(options)
         : await fetchLearnWord();
 
+      if (isUnmounted || requestId !== wordRequestSequence) return;
       targetState.word = data;
       targetState.displayDirection =
         nextMode === 'repeat' && targetState.word.answerLanguage !== null
@@ -163,6 +173,8 @@ export function usePracticeSession(mode: () => PracticeMode, options?: { autoSta
         saveLearnSessionWord(targetState.word, nextDisplayDirection);
       }
     } catch (error) {
+      if (isUnmounted || requestId !== wordRequestSequence) return;
+      if (error instanceof ApiError && error.kind === 'aborted') return;
       if (error instanceof EmptyIntervalRepetitionQueueError) {
         requestError.value = error.message;
       } else if (error instanceof ApiError && error.kind === 'http' && error.status === 404) {
@@ -173,7 +185,7 @@ export function usePracticeSession(mode: () => PracticeMode, options?: { autoSta
       showError(requestError.value);
       console.error('Не удалось загрузить слово:', error);
     } finally {
-      isLoading.value = false;
+      if (requestId === wordRequestSequence) isLoading.value = false;
     }
   }
 
@@ -382,7 +394,11 @@ export function usePracticeSession(mode: () => PracticeMode, options?: { autoSta
     }
   }
 
-  onUnmounted(invalidateActiveAnswerRequest);
+  onUnmounted(() => {
+    isUnmounted = true;
+    wordRequestSequence += 1;
+    invalidateActiveAnswerRequest();
+  });
 
   return {
     selectedMode, currentState, currentWord, isLoading, isSendingAnswer,

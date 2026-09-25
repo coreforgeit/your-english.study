@@ -1,9 +1,9 @@
-import { z } from 'zod';
-
 import { authenticateTelegramSession } from '@/shared/api/client';
-
-const telegramAuthResponseSchema = z.boolean();
+import { clearAuthenticatedSession, startAuthenticatedSession } from '@/shared/auth/session';
 
 export async function authenticateTelegram(initData: string): Promise<boolean> {
-  return telegramAuthResponseSchema.parse(await authenticateTelegramSession(initData));
+  clearAuthenticatedSession();
+  const authenticated = await authenticateTelegramSession(initData);
+  if (authenticated) startAuthenticatedSession(initData);
+  return authenticated;
 }

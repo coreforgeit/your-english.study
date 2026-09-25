@@ -1,111 +1,95 @@
-import { ref } from 'vue';
-import { z } from 'zod';
-
 import { fetchIntervalRepetitionWordIds } from '@/features/practice/api/practiceApi';
 import { buildRepetitionProgressNotification } from '@/features/practice/notifications/repetitionNotifications';
+import { ApiError } from '@/shared/api/errors';
+import { authenticatedSession, type AuthenticatedSession } from '@/shared/auth/session';
 import { useNotificationCenter } from '@/shared/notifications/useNotificationCenter';
 
-const WORD_IDS_STORAGE_KEY = 'practice:interval-repetition-word-ids';
-const REQUESTED_IN_SESSION_STORAGE_KEY = 'practice:interval-repetitions-requested';
-const storedWordIdsSchema = z.array(z.number().int().positive());
+type QueueVisit = {
+  readonly owner: AuthenticatedSession | null;
+  wordIds: number[];
+  loaded: boolean;
+  loadPromise: Promise<void> | null;
+};
 
-function readStoredWordIds(): number[] {
+// Одна очередь на активную страницу повторения, без копий в браузерном хранилище.
+let activeVisit: QueueVisit | null = null;
+
+function removeLegacyCache() {
   try {
-    const storedValue = localStorage.getItem(WORD_IDS_STORAGE_KEY);
-    return storedValue ? storedWordIdsSchema.parse(JSON.parse(storedValue)) : [];
+    localStorage.removeItem('practice:interval-repetition-word-ids');
   } catch {
-    try {
-      localStorage.removeItem(WORD_IDS_STORAGE_KEY);
-    } catch {
-      // Хранилище может быть недоступно внутри некоторых WebView.
-    }
-    return [];
+    // Старый кэш никогда не читается, даже если браузер запрещает его удаление.
   }
-}
-
-function wasRequestedInCurrentSession(): boolean {
   try {
-    return sessionStorage.getItem(REQUESTED_IN_SESSION_STORAGE_KEY) === 'true';
+    sessionStorage.removeItem('practice:interval-repetitions-requested');
   } catch {
-    return false;
+    // Недоступность хранилища не мешает очереди работать в памяти.
   }
 }
 
 export function useIntervalRepetitionQueue() {
   const { addNotification } = useNotificationCenter();
-  const wordIds = ref<number[]>(readStoredWordIds());
-  const hasRequested = ref(wasRequestedInCurrentSession());
-  let loadPromise: Promise<void> | null = null;
 
-  function saveWordIds() {
-    try {
-      localStorage.setItem(WORD_IDS_STORAGE_KEY, JSON.stringify(wordIds.value));
-    } catch {
-      // Очередь продолжит работать в памяти до закрытия приложения.
+  function beginVisit(): QueueVisit {
+    removeLegacyCache();
+    if (activeVisit) endVisit(activeVisit);
+    activeVisit = {
+      owner: authenticatedSession.value,
+      wordIds: [],
+      loaded: false,
+      loadPromise: null,
+    };
+    return activeVisit;
+  }
+
+  function endVisit(visit: QueueVisit) {
+    visit.wordIds = [];
+    visit.loaded = false;
+    if (activeVisit === visit) activeVisit = null;
+  }
+
+  function assertCurrent(visit: QueueVisit) {
+    if (activeVisit !== visit || visit.owner !== authenticatedSession.value) {
+      throw new ApiError('aborted', 'Страница повторения или пользователь уже изменились');
     }
   }
 
-  function replaceWordIds(nextWordIds: number[]) {
-    wordIds.value = [...new Set(nextWordIds)];
-    saveWordIds();
-  }
+  async function loadOnce(visit: QueueVisit): Promise<void> {
+    assertCurrent(visit);
+    if (visit.loadPromise) return visit.loadPromise;
+    if (visit.loaded) return;
 
-  function markAsRequested() {
-    hasRequested.value = true;
-    try {
-      sessionStorage.setItem(REQUESTED_IN_SESSION_STORAGE_KEY, 'true');
-    } catch {
-      // Флаг останется доступен в памяти текущей вкладки.
-    }
-  }
-
-  async function load(force = false) {
-    if (loadPromise) {
-      return loadPromise;
-    }
-
-    if (!force && hasRequested.value) {
-      return;
-    }
-
-    loadPromise = (async () => {
-      const nextWordIds = await fetchIntervalRepetitionWordIds();
-      replaceWordIds(nextWordIds);
-      markAsRequested();
+    const promise = (async () => {
+      const wordIds = await fetchIntervalRepetitionWordIds();
+      assertCurrent(visit);
+      visit.wordIds = [...new Set(wordIds)];
+      visit.loaded = true;
     })();
+    visit.loadPromise = promise;
 
     try {
-      await loadPromise;
+      await promise;
     } finally {
-      loadPromise = null;
+      // У старого запроса свой объект визита: новую очередь он не изменит.
+      visit.loadPromise = null;
     }
   }
 
-  function getRandomWordId(): number | null {
-    if (wordIds.value.length === 0) {
-      return null;
-    }
-
-    const randomIndex = Math.floor(Math.random() * wordIds.value.length);
-    return wordIds.value[randomIndex] ?? null;
+  function getRandomWordId(visit: QueueVisit): number | null {
+    assertCurrent(visit);
+    if (!visit.wordIds.length) return null;
+    return visit.wordIds[Math.floor(Math.random() * visit.wordIds.length)] ?? null;
   }
 
-  function removeWordId(wordId: number) {
-    const nextWordIds = wordIds.value.filter((storedWordId) => storedWordId !== wordId);
-    if (nextWordIds.length !== wordIds.value.length) {
-      replaceWordIds(nextWordIds);
+  function removeWordId(visit: QueueVisit, wordId: number) {
+    assertCurrent(visit);
+    const nextWordIds = visit.wordIds.filter((id) => id !== wordId);
+    if (nextWordIds.length === visit.wordIds.length) return;
+    visit.wordIds = nextWordIds;
 
-      const notification = buildRepetitionProgressNotification(nextWordIds.length);
-      if (notification) {
-        addNotification(notification);
-      }
-    }
+    const notification = buildRepetitionProgressNotification(nextWordIds.length);
+    if (notification) addNotification(notification);
   }
 
-  return {
-    getRandomWordId,
-    loadOnce: () => load(),
-    reload: () => load(true),
-    removeWordId,
-  };
+  return { beginVisit, endVisit, assertCurrent, loadOnce, getRandomWordId, removeWordId };
 }

@@ -22,7 +22,6 @@ function mountSession(t, { mode = 'repeat', onRequest, autoStart = false, stored
   const routeChanges = [];
   const props = vue.reactive({ mode });
   let preloadCount = 0;
-  let reloadCount = 0;
   const component = load('src/views/PracticeView.vue', {
     '@lucide/vue': {},
     'vue-router': {
@@ -32,8 +31,8 @@ function mountSession(t, { mode = 'repeat', onRequest, autoStart = false, stored
     '@/shared/config': { BACKEND_URL: 'https://example.test' },
     '@/features/practice/composables/useIntervalRepetitionQueue': {
       useIntervalRepetitionQueue: () => ({
+        beginVisit: () => ({}), endVisit() {}, assertCurrent() {},
         loadOnce: async () => { preloadCount++; },
-        reload: async () => { reloadCount++; },
         getRandomWordId: () => 43, removeWordId() {},
       }),
     },
@@ -67,7 +66,6 @@ function mountSession(t, { mode = 'repeat', onRequest, autoStart = false, stored
   return {
     state, view, requests, stored, props, routeChanges, unmount: () => app.unmount(),
     get preloadCount() { return preloadCount; },
-    get reloadCount() { return reloadCount; },
   };
 }
 
@@ -205,8 +203,7 @@ test('reminder entry clears the route query and reloads the repetition queue', a
   const h = mountSession(t, { autoStart: true });
   for (let i = 0; i < 20; i++) await Promise.resolve();
   assert.deepEqual(plain(h.routeChanges), [{ name: 'repeat' }]);
-  assert.equal(h.preloadCount, 0);
-  assert.equal(h.reloadCount, 1);
+  assert.equal(h.preloadCount, 1);
   assert.equal(h.state.showRepeatStartDialog.value, false);
   assert.equal(h.requests.length, 1);
 });
