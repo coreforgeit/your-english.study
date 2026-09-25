@@ -15,6 +15,7 @@ import {
   useRepeatSession,
 } from '@/features/practice/composables/useRepeatSession';
 import { authorizedFetch, BACKEND_URL } from '@/shared/api/client';
+import { APP_LIMITS } from '@/shared/limits';
 import {
   APP_LAUNCH_AUTO_START_VALUE,
   AppLaunchQuery,
@@ -117,7 +118,7 @@ const repeatSessionStateSchema = z.object({
 
 const LEARN_SESSION_WORD_STORAGE_KEY = 'practice:last-learn-word';
 const REPEAT_SESSION_STATE_STORAGE_KEY = 'practice:last-repeat-state';
-const VOICE_ANSWER_TIMEOUT_MS = 10_000;
+const wordPracticeLimits = APP_LIMITS.wordPractice;
 
 function createPracticeState(displayDirection: DisplayDirection): PracticeState {
   return {
@@ -144,6 +145,7 @@ const isSendingAnswer = ref(false);
 const manualReviewLoadingWordId = ref<number | null>(null);
 const manuallyReviewedWordIds = ref<Set<number>>(new Set());
 const isRecording = ref(false);
+const isStartingRecording = ref(false);
 const requestError = ref<string | null>(null);
 const answerError = ref<string | null>(null);
 const errorMessage = ref<string | null>(null);
@@ -165,6 +167,8 @@ const repeatSession = useRepeatSession();
 let answerRequestSequence = 0;
 let activeAnswerRequestId: number | null = null;
 let voiceAnswerTimeout: ReturnType<typeof setTimeout> | null = null;
+let recordingTimeout: ReturnType<typeof setTimeout> | null = null;
+let isUnmounted = false;
 
 function restoreLearnSessionWord() {
   try {
@@ -276,9 +280,6 @@ watch(
   { deep: true },
 );
 
-const voiceSilenceThreshold = 0.025;
-const voiceSilenceMsToStop = 1200;
-const voiceMinRecordingMs = 500;
 const voiceAudioBitsPerSecond = 48_000;
 const voiceAudioConstraints: MediaTrackConstraints = {
   channelCount: { ideal: 1 },
@@ -324,6 +325,7 @@ const isMicrophoneDisabled = computed(
     !hasCurrentWord.value ||
     isLearnMode.value ||
     currentState.value.answerSubmitted ||
+    isStartingRecording.value ||
     isSendingAnswer.value ||
     isLoading.value,
 );
@@ -775,10 +777,10 @@ function showVoiceAnswerChecking(requestId: number, debugPrefix: string) {
   voiceAnswerTimeout = setTimeout(() => {
     voiceAnswerTimeout = null;
     if (activeAnswerRequestId === requestId && voiceAnswerDialogState.value === 'checking') {
-      answerDebugReport.value = `${debugPrefix} · timeout>${VOICE_ANSWER_TIMEOUT_MS}ms`;
+      answerDebugReport.value = `${debugPrefix} · timeout>${wordPracticeLimits.voiceAnswerTimeoutMs}ms`;
       voiceAnswerDialogState.value = 'error';
     }
-  }, VOICE_ANSWER_TIMEOUT_MS);
+  }, wordPracticeLimits.voiceAnswerTimeoutMs);
 }
 
 function showVoiceAnswerError(requestId: number, debugReport: string) {
@@ -1102,13 +1104,16 @@ function startVoiceDetection(targetState: PracticeState) {
     const volume = getVoiceVolume(analyser);
     const now = performance.now();
 
-    if (volume >= voiceSilenceThreshold) {
+    if (volume >= wordPracticeLimits.recording.silenceThreshold) {
       voiceDetected = true;
       silenceStartedAt = null;
     } else if (voiceDetected) {
       silenceStartedAt ??= now;
 
-      if (now - silenceStartedAt >= voiceSilenceMsToStop && now - recordingStartedAt >= voiceMinRecordingMs) {
+      if (
+        now - silenceStartedAt >= wordPracticeLimits.recording.silenceDurationMs &&
+        now - recordingStartedAt >= wordPracticeLimits.recording.minDurationMs
+      ) {
         stopRecording({ shouldSubmit: true, targetState });
         return;
       }
@@ -1121,6 +1126,11 @@ function startVoiceDetection(targetState: PracticeState) {
 }
 
 function stopRecording(options?: { shouldSubmit?: boolean; targetState?: PracticeState }) {
+  if (recordingTimeout !== null) {
+    clearTimeout(recordingTimeout);
+    recordingTimeout = null;
+  }
+
   const recorder = mediaRecorder.value;
   const shouldSubmit = options?.shouldSubmit === true;
   const targetState = options?.targetState ?? currentState.value;
@@ -1136,7 +1146,7 @@ function stopRecording(options?: { shouldSubmit?: boolean; targetState?: Practic
         auto_submit: shouldSubmit,
       });
 
-      if (shouldSubmit && targetState.recordedAudio.size > 0) {
+      if (shouldSubmit && !isUnmounted && targetState.recordedAudio.size > 0) {
         void submitAnswer(targetState);
       }
     };
@@ -1149,6 +1159,11 @@ function stopRecording(options?: { shouldSubmit?: boolean; targetState?: Practic
 }
 
 async function startRecording() {
+  if (isUnmounted || isStartingRecording.value || isRecording.value) {
+    return;
+  }
+
+  isStartingRecording.value = true;
   const targetState = currentState.value;
 
   answerError.value = null;
@@ -1158,8 +1173,14 @@ async function startRecording() {
 
   try {
     const stream = await getRecordingStream();
+    if (isUnmounted) {
+      releaseRecordingStream();
+      return;
+    }
+
     const recorder = createVoiceMediaRecorder(stream);
     const audioContext = new AudioContext();
+    recordingAudioContext.value = audioContext;
     const source = audioContext.createMediaStreamSource(stream);
     const analyser = audioContext.createAnalyser();
 
@@ -1167,7 +1188,6 @@ async function startRecording() {
     source.connect(analyser);
 
     mediaRecorder.value = recorder;
-    recordingAudioContext.value = audioContext;
     recordingAnalyser.value = analyser;
     console.log('[practice-answer:voice-settings]', {
       track: stream.getAudioTracks()[0]?.getSettings(),
@@ -1180,6 +1200,10 @@ async function startRecording() {
       }
     };
     recorder.start();
+    // Отдельный таймер ограничивает запись даже без речи и кадров визуализатора.
+    recordingTimeout = setTimeout(() => {
+      stopRecording({ shouldSubmit: true, targetState });
+    }, wordPracticeLimits.recording.maxDurationMs);
     voiceDetected = false;
     silenceStartedAt = null;
     recordingStartedAt = performance.now();
@@ -1187,9 +1211,13 @@ async function startRecording() {
     startVoiceDetection(targetState);
     console.log('[practice-answer:voice]', 'recording-started');
   } catch (error) {
+    stopRecording();
+    releaseRecordingStream();
     answerError.value = error instanceof Error ? error.message : 'Не удалось включить микрофон';
     showError(answerError.value);
     console.error('[practice-answer:voice-error]', error);
+  } finally {
+    isStartingRecording.value = false;
   }
 }
 
@@ -1203,6 +1231,7 @@ async function toggleRecording() {
 }
 
 onUnmounted(() => {
+  isUnmounted = true;
   invalidateActiveAnswerRequest();
   stopRecording();
   releaseRecordingStream();
@@ -1377,7 +1406,7 @@ onUnmounted(() => {
         <button
           type="button"
           class="next-button"
-          :disabled="isLoading || isSendingAnswer || isRecording || manualReviewLoadingWordId !== null"
+          :disabled="isLoading || isSendingAnswer || isRecording || isStartingRecording || manualReviewLoadingWordId !== null"
           @click="handleNextButton"
         >
           {{ nextButtonText }}
