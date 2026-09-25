@@ -26,7 +26,7 @@ function load(relativePath, imports = {}, globals = {}) {
     const exports = {};
     modules.set(modulePath, exports);
     vm.runInNewContext(sources.get(modulePath), {
-      exports, Error, Blob, FormData, DOMException, performance, setTimeout, clearTimeout,
+      exports, Error, Blob, FormData, Headers, Response, DOMException, performance, setTimeout, clearTimeout,
       console: { log() {}, warn() {}, error() {} }, ...globals,
       require(name) {
         if (name in imports) return imports[name];

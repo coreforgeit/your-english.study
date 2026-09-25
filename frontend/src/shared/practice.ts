@@ -1,4 +1,5 @@
 export type PracticeMode = 'learn' | 'repeat';
+export const MANUAL_REVIEW_STATUS = 'manual_review';
 export type DisplayDirection = 'ru-en' | 'en-ru';
 export type AnswerStatus = 'correct' | 'incorrect' | null;
 export type TypoType = 'replace' | 'missing' | 'extra';
@@ -51,4 +52,3 @@ export type PracticeState = {
   answerComment: string | null;
   recordedAudio: Blob | null;
 };
-

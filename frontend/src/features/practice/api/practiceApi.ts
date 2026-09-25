@@ -1,93 +1,40 @@
-import { z } from 'zod';
-
-import { authorizedFetch, BACKEND_URL } from '@/shared/api/client';
+import { apiRequest } from '@/shared/api/client';
 import type { PracticeMode, WordData } from '@/shared/practice';
+import {
+  answerResponseSchema,
+  intervalRepetitionsResponseSchema,
+  manualReviewResponseSchema,
+  wordResponseSchema,
+} from '@/features/practice/api/practiceSchemas';
+import { normalizeAnswer, normalizeWordData } from '@/features/practice/api/practiceMappers';
 
-export const wordIdentitySchema = z.object({
-  id: z.number().int().positive(),
-  word: z.string().refine((value) => value.trim().length > 0, 'Слово не должно быть пустым'),
-});
-
-// Проверяем обязательные поля; остальные сохраняем для нормализации в карточку.
-const wordResponseSchema = z.object({
-  data: wordIdentitySchema.passthrough(),
-});
-
-export type PracticeWordResponse = z.infer<typeof wordResponseSchema>;
-
-const intervalRepetitionsResponseSchema = z.object({
-  data: z.array(z.number().int().positive()),
-});
-
-export class PracticeApiError extends Error {
-  constructor(
-    public readonly status: number,
-    public readonly responseData: unknown,
-  ) {
-    super(`Practice API вернул ${status}`);
-    this.name = 'PracticeApiError';
-  }
-}
-
-async function readResponse(response: Response): Promise<unknown> {
-  const contentType = response.headers.get('content-type') ?? '';
-  return contentType.includes('application/json')
-    ? response.json()
-    : response.text();
-}
-
-async function requestWord(
-  mode: PracticeMode,
-  wordId: number | null = null,
-): Promise<PracticeWordResponse> {
-  const url = `${BACKEND_URL}/api/telegram-app/words/${mode}`;
-  const body = mode === 'repeat' && wordId !== null ? { word_id: wordId } : {};
-
-  console.log('Загрузка слова:', { mode, wordId });
-
-  const response = await authorizedFetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
+async function requestWord(mode: PracticeMode, wordId: number | null = null): Promise<WordData> {
+  const response = await apiRequest(
+    `/api/telegram-app/words/${mode}`,
+    wordResponseSchema,
+    {
+      method: 'POST',
+      json: mode === 'repeat' && wordId !== null ? { word_id: wordId } : {},
+      invalidResponseMessage: 'Не удалось загрузить слово. Попробуйте ещё раз.',
     },
-    body: JSON.stringify(body),
-  });
-  const data = await readResponse(response);
-
-  console.log('Ответ на загрузку слова:', { status: response.status });
-
-  if (!response.ok) {
-    throw new PracticeApiError(response.status, data);
-  }
-
-  const result = wordResponseSchema.safeParse(data);
-  if (!result.success) {
-    throw new Error('Не удалось загрузить слово. Попробуйте ещё раз.', { cause: result.error });
-  }
-
-  return result.data;
+  );
+  return normalizeWordData(response);
 }
 
-export async function fetchLearnWord(): Promise<PracticeWordResponse> {
+export function fetchLearnWord(): Promise<WordData> {
   return requestWord('learn');
 }
 
-export async function fetchRepeatWord(wordId: number | null): Promise<PracticeWordResponse> {
+export function fetchRepeatWord(wordId: number | null): Promise<WordData> {
   return requestWord('repeat', wordId);
 }
 
 export async function fetchIntervalRepetitionWordIds(): Promise<number[]> {
-  const response = await authorizedFetch(
-    `${BACKEND_URL}/api/telegram-app/words/interval-repetitions`,
+  const response = await apiRequest(
+    '/api/telegram-app/words/interval-repetitions',
+    intervalRepetitionsResponseSchema,
   );
-  const data = await readResponse(response);
-
-  if (!response.ok) {
-    throw new PracticeApiError(response.status, data);
-  }
-
-  // Проверяем контракт здесь, чтобы UI всегда получал обычный массив id.
-  return intervalRepetitionsResponseSchema.parse(data).data;
+  return response.data;
 }
 
 type AnswerRequest = {
@@ -98,9 +45,15 @@ type AnswerRequest = {
   skip: boolean;
 };
 
-export async function sendPracticeAnswer(answer: AnswerRequest): Promise<unknown> {
+export async function sendPracticeAnswer(answer: AnswerRequest) {
   const { wordId, answerLanguage, textAnswer, recordedAudio, skip } = answer;
-  const request: RequestInit = { method: 'POST' };
+  const schema = answerResponseSchema(skip);
+  const options = {
+    method: 'POST',
+    invalidResponseMessage: 'Не удалось получить результат проверки. Попробуйте ещё раз.',
+  };
+  const path = '/api/telegram-app/words/answer';
+  let data;
 
   if (recordedAudio && !skip) {
     const formData = new FormData();
@@ -109,29 +62,26 @@ export async function sendPracticeAnswer(answer: AnswerRequest): Promise<unknown
     formData.append('answer_language', answerLanguage);
     formData.append('skip', 'false');
     formData.append('audio_file', recordedAudio, 'answer.webm');
-    request.body = formData;
+    data = await apiRequest(path, schema, { ...options, body: formData });
   } else {
-    request.headers = { 'Content-Type': 'application/json' };
-    request.body = JSON.stringify({
-      word_id: wordId,
-      answer_type: 'text',
-      answer_language: answerLanguage,
-      ...(skip ? {} : { text_answer: textAnswer }),
-      skip,
+    data = await apiRequest(path, schema, {
+      ...options,
+      json: {
+        word_id: wordId,
+        answer_type: 'text',
+        answer_language: answerLanguage,
+        ...(skip ? {} : { text_answer: textAnswer }),
+        skip,
+      },
     });
   }
-
-  const response = await authorizedFetch(`${BACKEND_URL}/api/telegram-app/words/answer`, request);
-  const data = await readResponse(response);
-  if (!response.ok) throw new PracticeApiError(response.status, data);
-  return data;
+  return normalizeAnswer(data, skip ? '' : textAnswer);
 }
 
 export async function sendWordToManualReview(wordId: number): Promise<void> {
-  const response = await authorizedFetch(
-    `${BACKEND_URL}/api/telegram-app/words/${wordId}/manual-review`,
+  await apiRequest(
+    `/api/telegram-app/words/${wordId}/manual-review`,
+    manualReviewResponseSchema(wordId),
     { method: 'PATCH' },
   );
-  const data = await readResponse(response);
-  if (!response.ok) throw new PracticeApiError(response.status, data);
 }

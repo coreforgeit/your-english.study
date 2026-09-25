@@ -29,14 +29,7 @@ function mountSession(t, { mode = 'repeat', onRequest, autoStart = false, stored
       useRoute: () => ({ query: autoStart ? { autoStart: 'true' } : {} }),
       useRouter: () => ({ replace: async (route) => { routeChanges.push(route); } }),
     },
-    '@/shared/api/client': {
-      BACKEND_URL: 'https://example.test',
-      authorizedFetch: async (url, options) => {
-        requests.push({ url, options });
-        if (onRequest) return onRequest(url, options);
-        return json({ data: { id: 43, word: 'pear', translations: ['груша'] } });
-      },
-    },
+    '@/shared/config': { BACKEND_URL: 'https://example.test' },
     '@/features/practice/composables/useIntervalRepetitionQueue': {
       useIntervalRepetitionQueue: () => ({
         loadOnce: async () => { preloadCount++; },
@@ -45,6 +38,11 @@ function mountSession(t, { mode = 'repeat', onRequest, autoStart = false, stored
       }),
     },
   }, {
+    fetch: async (url, options) => {
+      requests.push({ url, options });
+      if (onRequest) return onRequest(url, options);
+      return json({ data: { id: 43, word: 'pear', translations: ['груша'] } });
+    },
     sessionStorage: {
       getItem: (key) => stored.get(key) ?? null,
       setItem: (key, value) => stored.set(key, value),
@@ -175,7 +173,7 @@ test('unmount invalidates an in-flight answer', async (t) => {
 
 test('manual review uses PATCH and only marks successfully submitted words', async (t) => {
   let status = 503;
-  const h = mountSession(t, { onRequest: () => json({ detail: 'Позже' }, status) });
+  const h = mountSession(t, { onRequest: () => status === 200 ? json({ data: { id: 42, status: 'manual_review' } }) : json({ detail: 'Позже' }, status) });
   await h.state.sendCurrentWordToManualReview();
   assert.equal(h.state.manuallyReviewedWordIds.value.has(42), false);
   assert.equal(h.state.errorMessage.value, 'Позже');
@@ -251,18 +249,18 @@ test('blocked browser storage does not prevent restore or save', () => {
   assert.doesNotThrow(() => storage.saveLearnSessionWord(word, 'en-ru'));
 });
 
-test('answer mapper retains legacy shapes, fallback answers and filtering', () => {
+test('answer mapper uses validated data and retains legacy correct and fallback text', () => {
   const { normalizeAnswer } = load('src/features/practice/api/practiceMappers.ts');
-  const result = normalizeAnswer({
-    correct: true, correct_answer: ['', 7, 'one', 'two', 'three', 'four'],
-    has_typo: true, typo: { index: 1, type: 'invalid' }, comment: '  ',
-  }, 'fallback', ['translation']);
+  const { answerResponseSchema } = load('src/features/practice/api/practiceSchemas.ts');
+  const data = answerResponseSchema(false).parse({
+    correct: true, correct_answer: ['', 'one', 'two', 'three', 'four'], comment: '  ',
+  });
+  const result = normalizeAnswer(data, 'fallback');
   assert.equal(result.answerStatus, 'correct');
   assert.equal(result.answerTypo, null);
   assert.equal(result.submittedAnswer, 'fallback');
   assert.equal(result.answerComment, null);
   assert.deepEqual(plain(result.correctAnswers), ['one', 'two', 'three']);
-  assert.deepEqual(plain(normalizeAnswer(null, '', ['translation']).correctAnswers), ['translation']);
 });
 
 test('answer formatting preserves Unicode, missing, extra and replaced letters', () => {
@@ -277,3 +275,29 @@ test('answer formatting preserves Unicode, missing, extra and replaced letters',
   }
   assert.equal(buildAnswerParts('cat', { index: 1, type: 'missing', expected: 'a' }, 'correct-0')[1].state, 'expected');
 });
+
+for (const answerType of ['text', 'audio']) {
+  test(`invalid ${answerType} result keeps the answer available for retry`, async (t) => {
+    let valid = false;
+    const h = mountSession(t, { onRequest: () => json({ data: valid
+      ? { is_correct: true, answer: 'яблоко', new_field: 'allowed' }
+      : { answer: 'яблоко' } }) });
+    h.state.currentState.value.answerText = 'яблоко';
+    if (answerType === 'audio') h.state.currentState.value.recordedAudio = new Blob(['voice']);
+    await h.state.submitCurrentAnswer();
+    assert.equal(h.state.currentState.value.answerSubmitted, false);
+    assert.equal(h.state.currentState.value.showAnswer, false);
+    assert.equal(h.state.currentState.value.answerText, 'яблоко');
+    assert.equal(h.state.isSendingAnswer.value, false);
+    if (answerType === 'audio') {
+      assert.equal(h.state.voiceAnswerDialogState.value, 'error');
+      assert.equal(h.state.currentState.value.recordedAudio.size, 5);
+    } else {
+      assert.match(h.state.errorMessage.value, /результат проверки/);
+    }
+    valid = true;
+    await (answerType === 'audio' ? h.state.retryVoiceAnswer() : h.state.submitCurrentAnswer());
+    assert.equal(h.state.currentState.value.answerStatus, 'correct');
+    assert.equal(h.state.currentState.value.answerSubmitted, true);
+  });
+}

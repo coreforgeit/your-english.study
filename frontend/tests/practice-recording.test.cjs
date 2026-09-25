@@ -53,14 +53,7 @@ function mountPractice(t, { deferPermission = false, failStart = false, standalo
     '@lucide/vue': {},
     'vue-router': { useRoute: () => ({ query: {} }), useRouter: () => ({ replace: async () => {} }) },
     '@/shared/navigation/appLaunch': { AppLaunchQuery: { AUTO_START: 'autoStart' }, APP_LAUNCH_AUTO_START_VALUE: 'true' },
-    '@/shared/api/client': {
-      BACKEND_URL: 'https://example.test',
-      authorizedFetch: (...args) => {
-        requests.push(args);
-        // Keep the answer pending so this test only observes recording/submission.
-        return new Promise(() => {});
-      },
-    },
+    '@/shared/config': { BACKEND_URL: 'https://example.test' },
     '@/features/practice/components/AudioWaveform.vue': {},
     '@/features/practice/components/WordCard.vue': {},
     '@/features/practice/composables/useRepeatSession': {
@@ -68,6 +61,10 @@ function mountPractice(t, { deferPermission = false, failStart = false, standalo
     },
   };
   const globals = {
+    fetch: (...args) => {
+      requests.push(args);
+      return new Promise(() => {});
+    },
     console: { log() {}, warn() {}, error() {} },
     sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
     navigator: { mediaDevices: { getUserMedia: () => permission } },

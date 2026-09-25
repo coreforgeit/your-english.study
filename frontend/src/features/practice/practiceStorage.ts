@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { wordIdentitySchema } from '@/features/practice/api/practiceApi';
+import { wordIdentitySchema } from '@/features/practice/api/practiceSchemas';
 import type { DisplayDirection, PracticeState, WordData } from '@/shared/practice';
 
 const wordDataStorageSchema = wordIdentitySchema.extend({

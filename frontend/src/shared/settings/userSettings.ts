@@ -78,7 +78,7 @@ export async function updateAndStoreUserSettings(
     userSettingsResponseSchema,
     {
       method: 'PATCH',
-      body: JSON.stringify(settings),
+      json: settings,
     },
   );
   localStorage.setItem(USER_SETTINGS_STORAGE_KEY, JSON.stringify(response.data));

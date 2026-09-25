@@ -6,12 +6,11 @@ const { load } = require('./helpers/loadFrontend.cjs');
 function createApi(body, status = 200) {
   return load('src/features/practice/api/practiceApi.ts', {
     zod: require('zod'),
-    '@/shared/api/client': {
-      BACKEND_URL: 'https://example.test',
-      authorizedFetch: async () => new Response(JSON.stringify(body), {
-        status, headers: { 'Content-Type': 'application/json' },
-      }),
-    },
+    '@/shared/config': { BACKEND_URL: 'https://example.test' },
+  }, {
+    fetch: async () => new Response(JSON.stringify(body), {
+      status, headers: { 'Content-Type': 'application/json' },
+    }),
   });
 }
 
@@ -46,14 +45,16 @@ for (const [label, body] of invalidResponses) {
   });
 }
 
-test('required fields suffice; optional and new fields are preserved', async () => {
+test('required fields suffice; optional fields are mapped and new fields are tolerated', async () => {
   for (const data of [
     { id: 42, word: 'apple' },
     { id: 42, word: 'apple', audio_url: '/apple.mp3', translations: ['яблоко'], future_field: true },
   ]) {
     const api = createApi({ data });
     for (const result of [await api.fetchLearnWord(), await api.fetchRepeatWord(42)]) {
-      assert.equal(JSON.stringify(result.data), JSON.stringify(data));
+      assert.equal(result.id, data.id);
+      assert.equal(result.word, data.word);
+      assert.equal(result.audioUrl, data.audio_url ?? null);
     }
   }
 });
@@ -61,7 +62,7 @@ test('required fields suffice; optional and new fields are preserved', async () 
 test('HTTP failures retain status and backend error details', async () => {
   const api = createApi({ detail: 'Word not found' }, 404);
   await assert.rejects(() => api.fetchLearnWord(), (error) => {
-    assert.ok(error instanceof api.PracticeApiError);
+    assert.equal(error.kind, 'http');
     assert.equal(error.status, 404);
     assert.equal(error.responseData.detail, 'Word not found');
     return true;
@@ -70,33 +71,23 @@ test('HTTP failures retain status and backend error details', async () => {
 
 function mountPractice(t, { mode = 'repeat', responses = [], stored = new Map() } = {}) {
   const removedIds = [];
-  const api = createApi({ data: { id: 42, word: 'apple' } });
-  const nextWord = () => {
-    assert.ok(responses.length, 'Unexpected word request');
-    return createApi(responses.shift()).fetchLearnWord();
-  };
-  api.fetchLearnWord = nextWord;
-  api.fetchRepeatWord = nextWord;
-  const repeatSession = load('src/features/practice/composables/useRepeatSession.ts', {
-    '@/features/practice/api/practiceApi': api,
+  const component = load('src/views/PracticeView.vue', {
+    vue, '@lucide/vue': {},
+    'vue-router': { useRoute: () => ({ query: {} }), useRouter: () => ({ replace: async () => {} }) },
+    '@/shared/config': { BACKEND_URL: 'https://example.test' },
     '@/features/practice/composables/useIntervalRepetitionQueue': {
       useIntervalRepetitionQueue: () => ({
         loadOnce: async () => {}, reload: async () => {},
         getRandomWordId: () => 42, removeWordId: (id) => removedIds.push(id),
       }),
     },
-  });
-  const component = load('src/views/PracticeView.vue', {
-    vue, zod: require('zod'), '@lucide/vue': {},
-    'vue-router': { useRoute: () => ({ query: {} }), useRouter: () => ({ replace: async () => {} }) },
-    '@/features/practice/api/practiceApi': api,
-    '@/features/practice/composables/useRepeatSession': repeatSession,
-    '@/features/practice/components/AudioWaveform.vue': {},
-    '@/features/practice/components/WordCard.vue': {},
-    '@/shared/api/client': {},
-    '@/shared/limits': load('src/shared/limits.ts', {}),
-    '@/shared/navigation/appLaunch': load('src/shared/navigation/appLaunch.ts', {}),
   }, {
+    fetch: async () => {
+      assert.ok(responses.length, 'Unexpected word request');
+      return new Response(JSON.stringify(responses.shift()), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    },
     sessionStorage: {
       getItem: (key) => stored.get(key) ?? null,
       setItem: (key, value) => stored.set(key, value),

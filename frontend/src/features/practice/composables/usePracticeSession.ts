@@ -1,6 +1,6 @@
 import { computed, onUnmounted, ref, watch } from 'vue';
-import { fetchLearnWord, PracticeApiError, sendPracticeAnswer, sendWordToManualReview } from '@/features/practice/api/practiceApi';
-import { getBackendErrorMessage, normalizeAnswer, normalizeWordData } from '@/features/practice/api/practiceMappers';
+import { fetchLearnWord, sendPracticeAnswer, sendWordToManualReview } from '@/features/practice/api/practiceApi';
+import { ApiError, getApiErrorMessage } from '@/shared/api/client';
 import { EmptyIntervalRepetitionQueueError, useRepeatSession } from '@/features/practice/composables/useRepeatSession';
 import { restoreLearnSessionWord, restoreRepeatSessionState, saveLearnSessionWord, saveRepeatSessionState } from '@/features/practice/practiceStorage';
 import { useAudioRecorder } from '@/shared/audio/useAudioRecorder';
@@ -120,9 +120,7 @@ export function usePracticeSession(mode: () => PracticeMode, options?: { autoSta
       await sendWordToManualReview(wordId);
       manuallyReviewedWordIds.value = new Set(manuallyReviewedWordIds.value).add(wordId);
     } catch (error) {
-      showError(error instanceof PracticeApiError
-        ? getBackendErrorMessage(error.responseData, `Backend вернул ${error.status}`)
-        : 'Не удалось отправить слово на ручную проверку');
+      showError(getApiErrorMessage(error, 'Не удалось отправить слово на ручную проверку'));
     } finally {
       manualReviewLoadingWordId.value = null;
     }
@@ -143,7 +141,7 @@ export function usePracticeSession(mode: () => PracticeMode, options?: { autoSta
         ? await repeatSession.requestNextWord(options)
         : await fetchLearnWord();
 
-      targetState.word = normalizeWordData(data);
+      targetState.word = data;
       targetState.displayDirection =
         nextMode === 'repeat' && targetState.word.answerLanguage !== null
           ? targetState.word.answerLanguage === 'ru'
@@ -167,12 +165,10 @@ export function usePracticeSession(mode: () => PracticeMode, options?: { autoSta
     } catch (error) {
       if (error instanceof EmptyIntervalRepetitionQueueError) {
         requestError.value = error.message;
-      } else if (error instanceof PracticeApiError) {
-        requestError.value = error.status === 404
-          ? getWordNotFoundMessage()
-          : getBackendErrorMessage(error.responseData, `Backend вернул ${error.status}`);
+      } else if (error instanceof ApiError && error.kind === 'http' && error.status === 404) {
+        requestError.value = getWordNotFoundMessage();
       } else {
-        requestError.value = error instanceof Error ? error.message : 'Не удалось выполнить запрос';
+        requestError.value = getApiErrorMessage(error);
       }
       showError(requestError.value);
       console.error('Не удалось загрузить слово:', error);
@@ -291,7 +287,9 @@ export function usePracticeSession(mode: () => PracticeMode, options?: { autoSta
           : targetState.word?.word
             ? [targetState.word.word]
             : [];
-      Object.assign(targetState, normalizeAnswer(data, skip ? '' : textAnswer, fallbackCorrectAnswers));
+      Object.assign(targetState, data, {
+        correctAnswers: data.correctAnswers.length ? data.correctAnswers : fallbackCorrectAnswers,
+      });
       targetState.answerText = '';
       targetState.recordedAudio = null;
       targetState.showAnswer = true;
@@ -303,13 +301,11 @@ export function usePracticeSession(mode: () => PracticeMode, options?: { autoSta
         return;
       }
 
-      answerError.value = error instanceof PracticeApiError
-        ? getBackendErrorMessage(error.responseData, `Backend вернул ${error.status}`)
-        : error instanceof Error ? error.message : 'Не удалось отправить ответ';
+      answerError.value = getApiErrorMessage(error, 'Не удалось отправить ответ');
       if (hasAudio && !skip) {
         showVoiceAnswerError(
           requestId,
-          `${debugPrefix} · ${error instanceof PracticeApiError ? `HTTP=${error.status}` : 'error'} · time=${Math.round(performance.now() - requestStartedAt)}ms · ${shortenDebugValue(answerError.value)}`,
+          `${debugPrefix} · ${error instanceof ApiError ? `${error.kind}/HTTP=${error.status ?? '—'}` : 'error'} · time=${Math.round(performance.now() - requestStartedAt)}ms · ${shortenDebugValue(answerError.value)}`,
         );
       } else {
         showError(answerError.value);
