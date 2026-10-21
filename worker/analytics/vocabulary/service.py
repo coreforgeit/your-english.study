@@ -32,11 +32,12 @@ class VocabularyRepetitionAnalyticsService:
             .with_for_update(),
         )
 
-        current_status = (
-            learned_word.status
-            if learned_word is not None
-            else LearnedWordStatus.NEW
-        )
+        if learned_word is None:
+            raise LookupError(
+                f'Изучаемое слово не найдено: user_id={user_id} word_id={word_id}',
+            )
+
+        current_status = learned_word.status
         self.session.add(
             WordRepetitionAnswer(
                 user_id=user_id,
@@ -47,10 +48,6 @@ class VocabularyRepetitionAnalyticsService:
             ),
         )
         await self.session.flush()
-
-        if learned_word is None:
-            logger.warning(f'Аналитика повторения: изучаемое слово не найдено, user_id={user_id} word_id={word_id}')
-            return None
 
         changed_status: LearnedWordStatus | None = None
         if learned_word.status != LearnedWordStatus.LEARNED:

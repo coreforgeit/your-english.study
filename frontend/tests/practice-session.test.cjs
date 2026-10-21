@@ -101,6 +101,17 @@ test('regular skip still sends skip=true without text or audio', async (t) => {
   assert.equal(h.state.currentState.value.answerSkipped, true);
 });
 
+test('queue rejection keeps a text answer available instead of completing the card', async (t) => {
+  const message = 'Не удалось отправить ответ на сохранение. Попробуйте позже.';
+  const h = mountSession(t, { onRequest: async () => json({ detail: message }, 503) });
+  h.state.currentState.value.answerText = 'яблоко';
+  await h.state.submitCurrentAnswer();
+  assert.equal(h.state.currentState.value.answerText, 'яблоко');
+  assert.equal(h.state.currentState.value.answerSubmitted, false);
+  assert.equal(h.state.currentState.value.answerStatus, null);
+  assert.equal(h.state.errorMessage.value, message);
+});
+
 test('voice timeout skip only loads a word and ignores the late answer', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const answer = pending();

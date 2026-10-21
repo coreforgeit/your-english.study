@@ -174,23 +174,21 @@ class VocabularyRepetitionAnalyticsServiceTest(
         self.assertEqual(learned_word.status, LearnedWordStatus.NEW)
         self.assertEqual(learned_word.review_count, 5)
 
-    async def test_keeps_answer_when_learned_word_is_missing(self) -> None:
+    async def test_missing_learned_word_is_a_failure_without_recording_an_answer(self) -> None:
         session = self.make_session()
         session.scalar.return_value = None
         service = VocabularyRepetitionAnalyticsService(session)
 
-        changed_status = await service.record_answer(
-            user_id=42,
-            word_id=7,
-            session_id='answer-session',
-            is_correct=True,
-        )
+        with self.assertRaises(LookupError):
+            await service.record_answer(
+                user_id=42,
+                word_id=7,
+                session_id='answer-session',
+                is_correct=True,
+            )
 
-        self.assertIsNone(changed_status)
-        session.add.assert_called_once()
-        session.flush.assert_awaited_once_with()
-        added_answer = session.add.call_args.args[0]
-        self.assertEqual(added_answer.word_status, LearnedWordStatus.NEW)
+        session.add.assert_not_called()
+        session.flush.assert_not_awaited()
         session.scalars.assert_not_awaited()
 
 

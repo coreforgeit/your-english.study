@@ -2,6 +2,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from taskiq.exceptions import SendTaskError
 
 from api.dependencies import CurrentTelegramUser, get_current_telegram_user, get_session
 from api.parsers import (
@@ -195,19 +196,27 @@ async def answer_word(
         ) from exc
 
     try:
-        await record_word_repetition.kiq(
+        task = await record_word_repetition.kiq(
             user_id=current_user.id,
             word_id=parsed_request.payload.word_id,
             session_id=current_user.session_id,
             is_correct=result.check_result.is_correct,
         )
-    except Exception:
+    except SendTaskError as exc:
         logger.exception(
             f'Не удалось отправить повторение слова в воркер: '
             f'user_id={current_user.id} '
             f'word_id={parsed_request.payload.word_id}',
         )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail='Не удалось отправить ответ на сохранение. Попробуйте позже.',
+        ) from exc
 
+    logger.info(
+        f'Повторение отправлено в очередь: user_id={current_user.id} '
+        f'word_id={parsed_request.payload.word_id} task_id={task.task_id}',
+    )
     data = VocabularyWordAnswerData(
         success=True,
         answer=result.answer,

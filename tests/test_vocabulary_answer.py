@@ -1,5 +1,9 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+
+from fastapi import HTTPException
+from taskiq.exceptions import SendTaskError
 
 from api.dependencies import CurrentTelegramUser
 from api.parsers import ParsedVocabularyAnswerRequest
@@ -8,6 +12,7 @@ from api.schemas.vocabulary import VocabularyWordAnswerRequest
 from api.services.vocabulary_answer import (
     AnswerCheckResult,
     AudioAnswerFile,
+    VocabularyAnswerResult,
     VocabularyAnswerService,
 )
 from db.models import WordEn, WordRu
@@ -22,6 +27,41 @@ def make_parsed_request(payload: dict) -> ParsedVocabularyAnswerRequest:
 
 
 class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
+    async def test_queue_failure_is_not_reported_as_a_success(self):
+        request = make_parsed_request({
+            'word_id': 7, 'answer_type': 'text', 'answer_language': 'ru', 'skip': True,
+        })
+        with (
+            patch('api.routers.vocabulary.VocabularyAnswerService') as service,
+            patch('api.routers.vocabulary.record_word_repetition.kiq',
+                  AsyncMock(side_effect=SendTaskError())),
+        ):
+            service.return_value.process = AsyncMock()
+            with self.assertRaises(HTTPException) as error:
+                await answer_word(request, CurrentTelegramUser(id=42, session_id='session'), AsyncMock())
+
+        self.assertEqual(error.exception.status_code, 503)
+
+    async def test_queued_answer_returns_without_reading_worker_progress(self):
+        request = make_parsed_request({
+            'word_id': 7, 'answer_type': 'text', 'answer_language': 'ru', 'skip': True,
+        })
+        with (
+            patch('api.routers.vocabulary.VocabularyAnswerService') as service,
+            patch('api.routers.vocabulary.record_word_repetition.kiq',
+                  AsyncMock(return_value=SimpleNamespace(task_id='answer-task'))),
+            patch('services.repetition_goal.RepetitionGoalCounter._redis_client', AsyncMock()) as redis,
+        ):
+            service.return_value.process = AsyncMock(return_value=VocabularyAnswerResult(
+                answer='', check_result=AnswerCheckResult(is_correct=False), skip=True,
+            ))
+            response = await answer_word(
+                request, CurrentTelegramUser(id=42, session_id='session'), AsyncMock(),
+            )
+
+        self.assertTrue(response.data.success)
+        self.assertEqual(redis.mock_calls, [])
+
     def test_local_typo_limits_follow_correct_word_length(self):
         service = VocabularyAnswerService(AsyncMock())
         for length, max_errors in (

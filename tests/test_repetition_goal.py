@@ -135,6 +135,11 @@ class RepetitionGoalRedisTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await self.counter.get_remaining(self.user_id))
         self.assertEqual(await self.counter.initialize(self.user_id, 5), 5)
 
+    async def test_zero_goal_does_not_decrement_or_repeat_completion_event(self) -> None:
+        await self.counter.initialize(self.user_id, 0)
+        self.assertEqual(await self.counter.decrement(self.user_id, task_id='after-zero'), 0)
+        self.assertIsNone(await self.pubsub.get_message(timeout=0.05))
+
     async def test_parallel_initialization_uses_one_goal(self) -> None:
         results = await asyncio.gather(*(
             self.counter.initialize(self.user_id, count) for count in (5, 10, 30)

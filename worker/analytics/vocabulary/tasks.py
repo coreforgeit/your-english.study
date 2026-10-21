@@ -15,7 +15,7 @@ from worker.broker import broker
 logger = logging.getLogger(__name__)
 
 
-@broker.task(task_name=WorkerTaskName.RECORD_WORD_REPETITION)
+@broker.task(task_name=WorkerTaskName.RECORD_WORD_REPETITION.value)
 async def record_word_repetition(
     *,
     user_id: int,
@@ -24,6 +24,11 @@ async def record_word_repetition(
     is_correct: bool,
     context: Context = TaskiqDepends(),
 ) -> None:
+    task_id = context.message.task_id
+    logger.info(
+        f'Задача повторения принята: user_id={user_id} word_id={word_id} '
+        f'task_id={task_id}',
+    )
     async with async_session_factory() as session:
         try:
             changed_status = await VocabularyRepetitionAnalyticsService(
@@ -35,16 +40,33 @@ async def record_word_repetition(
                 is_correct=is_correct,
             )
             await session.commit()
-            logger.info(f'Повторение слова обработано: user_id={user_id} word_id={word_id} is_correct={is_correct}')
+            logger.info(
+                f'Прогресс повторения сохранён в БД: user_id={user_id} '
+                f'word_id={word_id} is_correct={is_correct} task_id={task_id}',
+            )
 
         except Exception:
             await session.rollback()
-            logger.exception(f'Не удалось обработать повторение слова: user_id={user_id} word_id={word_id}')
+            logger.exception(
+                f'Не удалось сохранить повторение: user_id={user_id} '
+                f'word_id={word_id} task_id={task_id}',
+            )
             raise
 
-        await RepetitionGoalCounter(session).decrement(
-            user_id,
-            task_id=context.message.task_id,
+        try:
+            remaining = await RepetitionGoalCounter(session).decrement(
+                user_id,
+                task_id=task_id,
+            )
+        except Exception:
+            logger.exception(
+                f'Не удалось обновить счётчик повторений: user_id={user_id} '
+                f'word_id={word_id} task_id={task_id}',
+            )
+            raise
+        logger.info(
+            f'Повторение обработано: user_id={user_id} word_id={word_id} '
+            f'task_id={task_id} remaining={remaining}',
         )
 
     if changed_status is None:
