@@ -52,7 +52,7 @@ test('queue belongs to a user/session and concurrent consumers share one load', 
   assert.equal(b.getRandomWordId(visit), null);
   await b.loadOnce(visit);
   assert.equal(h.requests, 1);
-  assert.equal(h.notifications.length, 1);
+  assert.equal(h.notifications.length, 0);
   assert.deepEqual(h.removedKeys, [
     'practice:interval-repetition-word-ids', 'practice:interval-repetitions-requested',
   ]);
@@ -207,6 +207,14 @@ test('reminder requires a queue, ordinary repetition retains server fallback', a
   await repeat.requestNextWord();
   assert.deepEqual(wordIds, [null]);
   assert.equal(h.requests, 1);
+});
+
+test('loading the final card does not announce completion before its answer is saved', async (t) => {
+  const h = fixture({ fetchIds: async () => [42] });
+  const { repeat } = mountRepeat(t, h);
+  const word = await repeat.requestNextWord();
+  assert.equal(word.id, 42);
+  assert.equal(h.notifications.length, 0);
 });
 
 test('session identity is parsed only as a local tag and changes on each login', () => {

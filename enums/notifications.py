@@ -7,3 +7,4 @@ class NotificationType(StrEnum):
     TEN_NEW_WORDS_TODAY = 'ten_new_words_today'
     WORD_STATUS_CHANGED = 'word_status_changed'
     WORD_LEARNED = 'word_learned'
+    REPETITIONS_COMPLETED = 'repetitions_completed'

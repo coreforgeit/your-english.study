@@ -34,3 +34,5 @@ temp/
 experiments/
 AGENTS.md
 /docs/
+/.agents/
+/.codex/

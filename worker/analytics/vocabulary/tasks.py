@@ -1,7 +1,10 @@
 import logging
 
+from taskiq import Context, TaskiqDepends
+
 from db.session import async_session_factory
 from enums import WorkerTaskName
+from services.repetition_goal import RepetitionGoalCounter
 from task_queue.tasks import send_word_status_changed_notification
 from worker.analytics.vocabulary.service import (
     VocabularyRepetitionAnalyticsService,
@@ -19,6 +22,7 @@ async def record_word_repetition(
     word_id: int,
     session_id: str,
     is_correct: bool,
+    context: Context = TaskiqDepends(),
 ) -> None:
     async with async_session_factory() as session:
         try:
@@ -37,6 +41,11 @@ async def record_word_repetition(
             await session.rollback()
             logger.exception(f'Не удалось обработать повторение слова: user_id={user_id} word_id={word_id}')
             raise
+
+        await RepetitionGoalCounter(session).decrement(
+            user_id,
+            task_id=context.message.task_id,
+        )
 
     if changed_status is None:
         return

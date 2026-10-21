@@ -15,6 +15,7 @@ NOTIFICATION_TEXTS: dict[NotificationType, str] = {
         'Статус слова «{word}» изменён: {status}.'
     ),
     NotificationType.WORD_LEARNED: 'Слово «{word}» выучено.',
+    NotificationType.REPETITIONS_COMPLETED: 'Цель выполнена — повторения на сегодня закончены!',
 }
 
 

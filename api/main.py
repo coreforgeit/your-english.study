@@ -8,6 +8,7 @@ from api.routers.health import router as health_router
 from api.services.session import close_session_store
 from core.config import settings
 from core.logging import setup_logging
+from services.repetition_goal import RepetitionGoalCounter
 from task_queue.broker import broker
 
 setup_logging()
@@ -23,6 +24,7 @@ async def lifespan(_: FastAPI):
         if not broker.is_worker_process:
             await broker.shutdown()
         await close_session_store()
+        await RepetitionGoalCounter.close_store()
 
 
 app = FastAPI(title='English Practice API', lifespan=lifespan)

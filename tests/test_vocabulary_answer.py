@@ -22,6 +22,63 @@ def make_parsed_request(payload: dict) -> ParsedVocabularyAnswerRequest:
 
 
 class VocabularyAnswerTest(unittest.IsolatedAsyncioTestCase):
+    def test_local_typo_limits_follow_correct_word_length(self):
+        service = VocabularyAnswerService(AsyncMock())
+        for length, max_errors in (
+            (1, 1), (3, 1), (5, 1), (6, 2), (10, 2),
+            (11, 3), (15, 3), (16, 4), (25, 4),
+        ):
+            correct_answer = 'a' * length
+            with self.subTest(length=length, errors=max_errors):
+                answer = 'b' * max_errors + correct_answer[max_errors:]
+                result = service._compare_answer(answer=answer, correct_answer=correct_answer)
+                self.assertTrue(result.is_correct)
+                self.assertTrue(result.has_typo)
+                self.assertEqual(result.typo['index'], 0)
+
+            with self.subTest(length=length, errors=max_errors + 1):
+                answer = 'b' * (max_errors + 1) + correct_answer[max_errors + 1:]
+                result = service._compare_answer(answer=answer, correct_answer=correct_answer)
+                self.assertFalse(result.is_correct)
+
+    def test_typo_limits_cover_missing_and_extra_letters(self):
+        service = VocabularyAnswerService(AsyncMock())
+        for answer, correct_answer, typo_type in (
+            ('aple', 'apple', 'missing'),
+            ('applee', 'apple', 'extra'),
+            ('aaaabb', 'aaaaaa', 'replace'),
+            ('aaaa', 'aaaaaa', 'missing'),
+            ('aaaaaabb', 'aaaaaa', 'extra'),
+            ('aaaaaaaa', 'aaaaaaaaaaa', 'missing'),
+            ('aaaaaaaaaaaa', 'aaaaaaaaaaaaaaaa', 'missing'),
+        ):
+            with self.subTest(answer=answer, correct_answer=correct_answer):
+                result = service._compare_answer(answer=answer, correct_answer=correct_answer)
+                self.assertTrue(result.is_correct)
+                self.assertTrue(result.has_typo)
+                self.assertEqual(result.typo['type'], typo_type)
+
+    def test_empty_answer_is_not_accepted_as_a_typo(self):
+        service = VocabularyAnswerService(AsyncMock())
+        self.assertFalse(service._compare_answer(answer='', correct_answer='a').is_correct)
+
+    async def test_multiple_local_typos_do_not_call_ai(self):
+        session = AsyncMock()
+        session.get.return_value = WordEn(word='banana')
+        service = VocabularyAnswerService(session)
+        service.check_text_answer_ai = AsyncMock()
+
+        result = await service._check_answer(
+            payload=VocabularyWordAnswerRequest(
+                word_id=7, answer_type='text', answer_language='en', text_answer='banono',
+            ),
+            answer='banono',
+        )
+
+        self.assertTrue(result.is_correct)
+        self.assertTrue(result.has_typo)
+        service.check_text_answer_ai.assert_not_awaited()
+
     def test_skip_defaults_to_false(self):
         payload = VocabularyWordAnswerRequest.model_validate(
             {

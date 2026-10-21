@@ -284,7 +284,7 @@ class VocabularyAnswerService:
             if normalized_answer == normalized_variant:
                 return AnswerCheckResult(is_correct=True)
 
-            typo = self._find_one_letter_typo(
+            typo = self._find_typo(
                 answer=normalized_answer,
                 correct_answer=normalized_variant,
             )
@@ -314,18 +314,22 @@ class VocabularyAnswerService:
 
         return [correct_answer]
 
-    def _find_one_letter_typo(
+    def _find_typo(
         self,
         *,
         answer: str,
         correct_answer: str,
     ) -> dict[str, int | str | None] | None:
-        if len(answer) <= 3 or len(correct_answer) <= 3:
+        if not answer or not correct_answer:
             return None
 
-        if self._levenshtein_distance(answer, correct_answer) != 1:
+        letter_count = sum(char.isalpha() for char in correct_answer)
+        max_errors = min(4, max(1, (letter_count + 4) // 5))
+        distance = self._levenshtein_distance(answer, correct_answer)
+        if not 1 <= distance <= max_errors:
             return None
 
+        # Контракт карточки содержит одну опечатку: показываем первое отличие.
         index = 0
         while (
             index < len(answer)

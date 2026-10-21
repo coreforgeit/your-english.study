@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -241,6 +242,15 @@ class VocabularyRepetitionStatusTest(unittest.TestCase):
 
 
 class VocabularyRepetitionTaskTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        counter_patch = patch(
+            'worker.analytics.vocabulary.tasks.RepetitionGoalCounter',
+        )
+        self.counter = counter_patch.start().return_value
+        self.counter.decrement = AsyncMock()
+        self.addCleanup(counter_patch.stop)
+        self.context = SimpleNamespace(message=SimpleNamespace(task_id='answer-task'))
+
     @patch(
         'worker.analytics.vocabulary.tasks.'
         'send_word_status_changed_notification.kiq',
@@ -268,12 +278,16 @@ class VocabularyRepetitionTaskTest(unittest.IsolatedAsyncioTestCase):
         service.record_answer = AsyncMock(
             return_value=LearnedWordStatus.FAMILIAR,
         )
+        self.counter.decrement.side_effect = (
+            lambda *args, **kwargs: session.commit.assert_awaited_once_with()
+        )
 
         await record_word_repetition.original_func(
             user_id=42,
             word_id=7,
             session_id='session',
             is_correct=True,
+            context=self.context,
         )
 
         service.record_answer.assert_awaited_once_with(
@@ -283,6 +297,7 @@ class VocabularyRepetitionTaskTest(unittest.IsolatedAsyncioTestCase):
             is_correct=True,
         )
         session.commit.assert_awaited_once_with()
+        self.counter.decrement.assert_awaited_once_with(42, task_id='answer-task')
         session.rollback.assert_not_awaited()
         enqueue_notification.assert_awaited_once_with(
             user_id=42,
@@ -320,8 +335,38 @@ class VocabularyRepetitionTaskTest(unittest.IsolatedAsyncioTestCase):
             word_id=7,
             session_id='session',
             is_correct=False,
+            context=self.context,
         )
 
         session.commit.assert_awaited_once_with()
+        self.counter.decrement.assert_awaited_once_with(42, task_id='answer-task')
         session.scalar.assert_not_awaited()
         enqueue_notification.assert_not_awaited()
+
+    @patch('worker.analytics.vocabulary.tasks.VocabularyRepetitionAnalyticsService')
+    @patch('worker.analytics.vocabulary.tasks.async_session_factory')
+    async def test_does_not_decrement_goal_when_commit_fails(
+        self,
+        session_factory: MagicMock,
+        service_class: MagicMock,
+    ) -> None:
+        session = MagicMock(spec=AsyncSession)
+        session.commit = AsyncMock(side_effect=RuntimeError('Ошибка сохранения'))
+        session.rollback = AsyncMock()
+        session_context = MagicMock()
+        session_context.__aenter__ = AsyncMock(return_value=session)
+        session_context.__aexit__ = AsyncMock(return_value=False)
+        session_factory.return_value = session_context
+        service_class.return_value.record_answer = AsyncMock(return_value=None)
+
+        with self.assertRaises(RuntimeError):
+            await record_word_repetition.original_func(
+                user_id=42,
+                word_id=7,
+                session_id='session',
+                is_correct=True,
+                context=self.context,
+            )
+
+        session.rollback.assert_awaited_once_with()
+        self.counter.decrement.assert_not_awaited()
